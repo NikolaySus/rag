@@ -5,11 +5,15 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "channels-redis>=4.2.1",
     "channels[daphne]>=4.2.2",
+    "colorama>=0.4.6",
     "django>=5.2",
     "ipykernel>=6.29.5",
     "ipython>=9.1.0",
     "jupyter-client>=8.6.3",
+    "prompt-toolkit>=3.0.51",
     "redis>=5.2.1",
     "tqdm>=4.67.1",
+    "websockets>=15.0.1",
 ]

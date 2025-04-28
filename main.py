@@ -1,18 +1,23 @@
+"""this is simple cli ipython kernels runner"""
+
 import sys
-from datetime import datetime
 from jupyter_client import MultiKernelManager
 
 
 class KernelCLI:
+    """MultiKernelManager wrapper"""
+
     def __init__(self):
         self.km = MultiKernelManager()
 
     def create_kernel(self):
+        """start ipython kernel"""
         kernel_id = self.km.start_kernel(kernel_name="python3")
         print(f"[✔] Kernel created with ID: {kernel_id}")
         return kernel_id
 
     def list_kernels(self):
+        """list ipython kernels"""
         kernels = self.km.list_kernel_ids()
         print("📚 Running Kernels:")
         for kid in kernels:
@@ -20,6 +25,7 @@ class KernelCLI:
         return list(kernels)
 
     def delete_kernel(self, kernel_id):
+        """stop ipython kernel"""
         if kernel_id in self.km:
             self.km.shutdown_kernel(kernel_id, now=True)
             print(f"[✖] Kernel {kernel_id} shut down.")
@@ -27,6 +33,7 @@ class KernelCLI:
             print(f"[!] Kernel {kernel_id} not found or already shut down.")
 
     def execute_code(self, kernel_id, code):
+        """run code in ipython kernel"""
         if kernel_id not in self.km:
             print(f"[!] Kernel {kernel_id} not found.")
             return
@@ -62,11 +69,15 @@ class KernelCLI:
         client.stop_channels()
 
     def shutdown_all_kernels(self):
+        """stop all ipython kernels"""
+        print("👋 Shutting down all kernels...")
         for kernel_id in self.km.list_kernel_ids():
             self.km.shutdown_kernel(kernel_id, now=True)
             print(f"[✖] Kernel {kernel_id} shut down.")
+        print("✅ Exit complete.")
 
     def help(self):
+        """show avaible commands"""
         print(
             """
 Available commands:
@@ -80,6 +91,7 @@ Available commands:
 
 
 def main():
+    """main cycle"""
     cli = KernelCLI()
     print("🔧 Welcome to the Jupyter Kernel CLI (Interactive)")
     cli.help()
@@ -104,9 +116,7 @@ def main():
             elif cmd == "help":
                 cli.help()
             elif cmd == "exit":
-                print("👋 Shutting down all kernels...")
                 cli.shutdown_all_kernels()
-                print("✅ Exit complete.")
                 break
             else:
                 print("[!] Unknown command. Type 'help' to see available commands.")
