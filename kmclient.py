@@ -45,7 +45,7 @@ async def send_loop(websocket):
                     payload = {"command": command, "args": args}
                     await websocket.send(json.dumps(payload))
                 except Exception as e:
-                    print_in_terminal("[!] Error:\n{e}\n")
+                    print_in_terminal(f"[!] Error:\n{e}\n")
         except KeyboardInterrupt:
             print_in_terminal("[!] Use 'exit' to quit the CLI.\n")
             continue

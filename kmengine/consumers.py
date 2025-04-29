@@ -1,7 +1,7 @@
 """All magic goes here"""
 
 import asyncio
-from typing import Any, Callable, List
+from typing import Any, Callable, List, Dict
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from jupyter_client import MultiKernelManager
 
@@ -38,6 +38,7 @@ class KernelCLI:
         kernel_id = self.pipelines[config_id]
         if kernel_id in self.km:
             self.km.shutdown_kernel(kernel_id, now=True)
+        del self.pipelines[config_id]
         return f"Pipeline {config_id} closed\n"
 
     def run_pipeline(self, config_id: int, content_: str, indexer: str,
@@ -103,6 +104,41 @@ exec_task(fn_dict, {indexer}, {larg})
         for kernel_id in self.km.list_kernel_ids():
             self.km.shutdown_kernel(kernel_id, now=True)
 
+    @staticmethod
+    def list_configs() -> List[Dict[str, Any]]:
+        """Return a list of all configs as dicts"""
+        ret = list(Config.objects.all().values("id", "name", "type", "created_at", "updated_at"))
+        for record in ret:
+            record["created_at"] = str(record["created_at"])
+            record["updated_at"] = str(record["updated_at"])
+        return ret
+
+    @staticmethod
+    def delete_config(config_id: int) -> str:
+        """Delete a config by id"""
+        try:
+            config = Config.objects.get(id=config_id)
+            config.delete()
+            return f"Config {config_id} deleted"
+        except Config.DoesNotExist:
+            return f"Config {config_id} does not exist"
+
+    @staticmethod
+    def get_config(config_id: int) -> Dict[str, Any]:
+        """Get a config by id"""
+        try:
+            config = Config.objects.get(id=config_id)
+            return {
+                "id": config.id,
+                "name": config.name,
+                "type": config.type,
+                "content": config.content,
+                "created_at": str(config.created_at),
+                "updated_at": str(config.updated_at),
+            }
+        except Config.DoesNotExist:
+            return {}
+
     def help(self) -> str:
         """show avaible commands"""
         return """
@@ -111,6 +147,9 @@ Available commands:
   update                       Get updated list of active pipelines
   run <id> <indexer> <arg>     Run pipeline with given configuration id
   close <id>                   Close pipeline with given configuration id
+  delete_config <id>           Delete a pipeline configuration by id
+  list_configs                 List all pipeline configurations
+  get_config <id>              Get a pipeline configuration by id
   exit                         Exit the CLI (all kernels will be shut down)
 """
 
@@ -120,91 +159,145 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(args, kwargs)
-        self.cli = KernelCLI()
+        self.cli: KernelCLI = KernelCLI()
+        self.command_handlers: Dict[str, Callable[[List[Any]], None]] = {
+            "update": self.handle_update,
+            "close": self.handle_close,
+            "run": self.handle_run,
+            "config": self.handle_config,
+            "delete_config": self.handle_delete_config,
+            "list_configs": self.handle_list_configs,
+            "get_config": self.handle_get_config,
+        }
 
     async def connect(self) -> None:
         """for client on client connect"""
         await self.accept()
-        await self.send_json({"status": "connected", "output": self.cli.help()})
+        await self.send_json({"status": "connected",
+                              "output": self.cli.help()})
 
-    async def disconnect(self, _: Any) -> None:
+    async def disconnect(self, _: Any = None) -> None:
+        """for client on client disconnect"""
         self.cli.shutdown_all_kernels()
 
     async def receive_json(self, content: Any = None, **kwargs) -> None:
         """do job from json"""
         try:
             if content is None:
-                await self.send_json({"status": "error", "message": "No data received"})
+                await self.send_json({"status": "error",
+                                      "message": "No data received"})
                 return
 
             command = content.get("command")
             args = content.get("args", [])
 
-            if command == "update":
-                kernels = self.cli.update()
-                await self.send_json({"status": "ok", "pipelines": kernels})
-            elif command == "close":
-                config_id = int(args[0]) if args else None
-                if config_id:
-                    msg = self.cli.close_pipeline(config_id)
-                    await self.send_json({"status": "ok", "message": msg})
-                else:
-                    await self.send_json({"status": "error", "message": "No config_id provided"})
-            elif command == "run":
-                config_id = int(args[0]) if len(args) > 0 else None
-                indexer = args[1] if len(args) > 1 else None
-                path_or_query =  args[2] if len(args) > 2 else None
-                if config_id and indexer and path_or_query:
-                    config = await sync_to_async(Config.objects.get)(id=config_id)
-                    content_ = config.content
-                    calculation = await sync_to_async(Calculation.objects.create)(
-                        status='running',
-                        config_id=config_id,
-                    )
-
-                    loop = asyncio.get_running_loop()
-
-                    async def send_output(text):
-                        await self.send_json({"status": "output", "from": [config_id, calculation.id], "output": text})
-
-                    def on_output(text):
-                        asyncio.run_coroutine_threadsafe(send_output(text), loop)
-
-                    status = await loop.run_in_executor(
-                        None,
-                        self.cli.run_pipeline,
-                        config_id,
-                        content_, indexer, path_or_query,
-                        on_output
-                    )
-
-                    await self.update_calculation_status(calculation.id, status)
-
-                    await self.send_json({"status": "ok", "message": "Execution finished"})
-                else:
-                    await self.send_json({"status": "error", "message": "config_id, indexer and path_or_query required"})
-            elif command == "config":
-                if len(args) < 3:
-                    await self.send_json({"status": "error", "message": "Arguments required: name, type, content"})
-                    return
-                name, type_, content_ = args[0], args[1], args[2]
-                try:
-                    config = await sync_to_async(Config.objects.create)(
-                        name=name,
-                        type=type_,
-                        content=content_,
-                    )
-                    await self.send_json({
-                        "status": "ok",
-                        "message": f"Config '{name}' created",
-                        "config_id": config.id
-                    })
-                except Exception as e:
-                    await self.send_json({"status": "error", "message": f"Failed to create config: {str(e)}"})
+            handler = self.command_handlers.get(command)
+            if handler:
+                await handler(args)
             else:
-                await self.send_json({"status": "error", "message": "Unknown command"})
+                await self.send_json({"status": "error",
+                                      "message": "Unknown command"})
         except Exception as e:
-            await self.send_json({"status": "error", "message": str(e)})
+            await self.send_json({"status": "error",
+                                  "message": str(e)})
+
+    async def handle_update(self, args: List[Any]) -> None:
+        """KernelCLI update wrapper"""
+        kernels = self.cli.update()
+        await self.send_json({"status": "ok",
+                              "pipelines": kernels})
+
+    async def handle_close(self, args: List[Any]) -> None:
+        """KernelCLI close_pipeline wrapper"""
+        config_id = int(args[0]) if args else None
+        if config_id:
+            msg = self.cli.close_pipeline(config_id)
+            await self.send_json({"status": "ok",
+                                  "message": msg})
+        else:
+            await self.send_json({"status": "error",
+                                  "message": "No config_id provided"})
+
+    async def handle_run(self, args: List[Any]) -> None:
+        """KernelCLI run_pipeline wrapper"""
+        if len(args) < 3:
+            await self.send_json({"status": "error",
+                                  "message": "config_id, indexer and path_or_query required"})
+            return
+        config_id, indexer, path_or_query = int(args[0]), args[1], args[2]
+        config = await sync_to_async(Config.objects.get)(id=config_id)
+        content_ = config.content
+        calculation = await sync_to_async(Calculation.objects.create)(
+            status='running',
+            config_id=config_id,
+        )
+        loop = asyncio.get_running_loop()
+
+        async def send_output(text):
+            await self.send_json({"status": "output",
+                                  "from": [config_id, calculation.id],
+                                  "output": text})
+
+        def on_output(text):
+            asyncio.run_coroutine_threadsafe(send_output(text), loop)
+
+        status = await loop.run_in_executor(
+            None,
+            self.cli.run_pipeline,
+            config_id,
+            content_, indexer, path_or_query,
+            on_output
+        )
+        await self.update_calculation_status(calculation.id, status)
+        await self.send_json({"status": "ok",
+                              "message": "Execution finished"})
+
+
+    async def handle_config(self, args: List[Any]) -> None:
+        """KernelCLI config wrapper"""
+        if len(args) < 3:
+            await self.send_json({"status": "error",
+                                  "message": "Arguments required: name, type, content"})
+            return
+        name, type_, content_ = args[0], args[1], args[2]
+        config = await sync_to_async(Config.objects.create)(
+            name=name,
+            type=type_,
+            content=content_,
+        )
+        await self.send_json({
+            "status": "ok",
+            "message": f"Config '{name}' created",
+            "config_id": config.id
+        })
+
+    async def handle_delete_config(self, args: List[Any]) -> None:
+        """KernelCLI delete_config wrapper"""
+        if not args:
+            await self.send_json({"status": "error", "message": "No config_id provided"})
+            return
+        config_id = int(args[0])
+        # Use sync_to_async for DB operation
+        msg = await sync_to_async(self.cli.delete_config)(config_id)
+        await self.send_json({"status": "ok", "message": msg})
+
+    async def handle_list_configs(self, args: List[Any]) -> None:
+        """KernelCLI list_configs wrapper"""
+        # Use sync_to_async for DB operation
+        configs = await sync_to_async(self.cli.list_configs)()
+        await self.send_json({"status": "ok", "configs": configs})
+
+    async def handle_get_config(self, args: List[Any]) -> None:
+        """KernelCLI get_config wrapper"""
+        if not args:
+            await self.send_json({"status": "error", "message": "No config_id provided"})
+            return
+        config_id = int(args[0])
+        config = await sync_to_async(self.cli.get_config)(config_id)
+        if config:
+            await self.send_json({"status": "ok", "config": config})
+        else:
+            await self.send_json({"status": "error", "message": f"Config {config_id} does not exist"})
 
     @sync_to_async
     def update_calculation_status(self, calc_id, status):
