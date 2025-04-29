@@ -13,6 +13,7 @@ dependencies = [
     "ipython>=9.1.0",
     "jupyter-client>=8.6.3",
     "prompt-toolkit>=3.0.51",
+    "pylint-django>=2.6.1",
     "redis>=5.2.1",
     "tqdm>=4.67.1",
     "websockets>=15.0.1",

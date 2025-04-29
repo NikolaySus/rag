@@ -1,7 +1,7 @@
 """All magic goes here"""
 
 import asyncio
-import sys
+from typing import Any, Callable, List
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from jupyter_client import MultiKernelManager
 
@@ -15,34 +15,35 @@ class KernelCLI:
     def __init__(self):
         self.km = MultiKernelManager()
         self.pipelines = dict()
-        # print("[✔] MultiKernelManager created")
 
-    def create_kernel(self):
-        """start ipython kernel"""
-        kernel_id = self.km.start_kernel(kernel_name="python3")
-        # print(f"[✔] Kernel created with ID: {kernel_id}")
-        return kernel_id
+    def update(self) -> List[int]:
+        """get updated list of active pipelines"""
+        kernels = set(self.km.list_kernel_ids())
+        bad_pipelines = set()
+        good_pipelines = set()
+        for p, k in self.pipelines.items():
+            if k not in kernels:
+                bad_pipelines.add(p)
+            else:
+                kernels.remove(k)
+                good_pipelines.add(p)
+        for p in bad_pipelines:
+            self.close_pipeline(p)
+        return list(good_pipelines)
 
-    def list_active(self):
-        """list active pipelines"""
-        kernels = self.km.list_kernel_ids()
-        # print("📚 Running Kernels:")
-        # for kid in kernels:
-        #     print(f" - {kid}")
-        return list(kernels)
+    def close_pipeline(self, config_id: int) -> str:
+        """stop pipeline and it's ipython kernel"""
+        if config_id not in self.pipelines:
+            return f"No pipeline {config_id} running\n"
+        kernel_id = self.pipelines[config_id]
+        if kernel_id in self.km:
+            self.km.shutdown_kernel(kernel_id, now=True)
+        return f"Pipeline {config_id} closed\n"
 
-    # def delete_kernel(self, kernel_id):
-    #     """stop ipython kernel"""
-    #     if kernel_id in self.km:
-    #         self.km.shutdown_kernel(kernel_id, now=True)
-    #         print(f"[✖] Kernel {kernel_id} shut down.")
-    #     else:
-    #         print(f"[!] Kernel {kernel_id} not found or already shut down.")
-
-    def execute_code(self, config_id, content_, indexer, path_or_query, on_output=None):
+    def run_pipeline(self, config_id: int, content_: str, indexer: str,
+                     path_or_query: str, on_output: Callable[[str], None]) -> str:
         """
-        Run code in ipython kernel.
-        If on_output is provided, call it with each output chunk.
+        Run pipeline in ipython kernel, call on_output with each output chunk.
         """
         if indexer == "true":
             larg = f"path='{path_or_query}'"
@@ -55,19 +56,11 @@ code = {content_}
 fn_dict = {{k: get_fn(v['path']) for k, v in code.items()}}
 exec_task(fn_dict, {indexer}, {larg})
 """
-        # if kernel_id not in self.km:
-        #     msg = f"[!] Kernel {kernel_id} not found."
-        #     if on_output:
-        #         on_output(msg)
-        #     # else:
-        #     #     print(msg)
-        #     return "fail"
         if config_id not in self.pipelines:
-            kernel_id = self.create_kernel()
+            kernel_id = self.km.start_kernel(kernel_name="python3")
             self.pipelines[config_id] = kernel_id
             code = "from fnuser import get_fn, exec_task" + code
-            if on_output:
-                on_output("Done some initial imports.\n")
+            on_output("Done some initial imports.\n")
         else:
             kernel_id = self.pipelines[config_id]
 
@@ -86,55 +79,38 @@ exec_task(fn_dict, {indexer}, {larg})
 
                 if msg_type == "execute_result":
                     text = content['data']['text/plain']
-                    if on_output:
-                        on_output(text)
-                    # else:
-                    #     print(text)
+                    on_output(text)
                 elif msg_type == "stream":
                     text = content["text"]
                     if "\r" in text:
                         last_line = text.split("\r")[-1]
-                        if on_output:
-                            on_output("\r" + last_line)
-                        # else:
-                        #     sys.stdout.write("\r" + last_line)
-                        #     sys.stdout.flush()
+                        on_output("\r" + last_line)
                     else:
-                        if on_output:
-                            on_output(text)
-                        # else:
-                        #     print(text, end="")
+                        on_output(text)
                 elif msg_type == "error":
                     ret = "fail"
                     err = "❌ Error:\n" + "\n".join(content["traceback"])
-                    if on_output:
-                        on_output(err)
-                    # else:
-                    #     print(err)
+                    on_output(err)
                 elif msg_type == "status" and content["execution_state"] == "idle":
                     break
 
         client.stop_channels()
         return ret
 
-    def shutdown_all_kernels(self):
+    def shutdown_all_kernels(self) -> None:
         """stop all ipython kernels"""
-        # print("👋 Shutting down all kernels...")
         self.pipelines = dict()
         for kernel_id in self.km.list_kernel_ids():
             self.km.shutdown_kernel(kernel_id, now=True)
-            # print(f"[✖] Kernel {kernel_id} shut down.")
-        # print("✅ Exit complete.")
 
-    def help(self):
+    def help(self) -> str:
         """show avaible commands"""
         return """
 Available commands:
-  config <name> <type> <path>  Create pipeline configuration from json file
-  create                       Create a new IPython kernel
-  list                         List running kernels
-  exec <id> <indexer> <arg>    Run pipeline with given configuration id
-  delete <id>                  Delete a kernel
+  config <name> <type> <json>  Create pipeline configuration from json
+  update                       Get updated list of active pipelines
+  run <id> <indexer> <arg>     Run pipeline with given configuration id
+  close <id>                   Close pipeline with given configuration id
   exit                         Exit the CLI (all kernels will be shut down)
 """
 
@@ -142,16 +118,19 @@ Available commands:
 class KMEConsumer(AsyncJsonWebsocketConsumer):
     """Ws consumer only for jsons"""
 
-    async def connect(self):
-        """for client on client connect"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(args, kwargs)
         self.cli = KernelCLI()
+
+    async def connect(self) -> None:
+        """for client on client connect"""
         await self.accept()
         await self.send_json({"status": "connected", "output": self.cli.help()})
 
-    async def disconnect(self, _):
+    async def disconnect(self, _: Any) -> None:
         self.cli.shutdown_all_kernels()
 
-    async def receive_json(self, content=None, **kwargs) -> None:
+    async def receive_json(self, content: Any = None, **kwargs) -> None:
         """do job from json"""
         try:
             if content is None:
@@ -161,21 +140,17 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
             command = content.get("command")
             args = content.get("args", [])
 
-            if command == "create":
-                kernel_id = self.cli.create_kernel()
-                await self.send_json({"status": "ok", "kernel_id": kernel_id})
-            elif command == "list":
-                kernels = self.cli.list_active()
-                await self.send_json({"status": "ok", "kernels": kernels})
-            # elif command == "delete":
-            #     kernel_id = args[0] if args else None
-            #     if kernel_id:
-            #         self.cli.delete_kernel(kernel_id)
-            #         await self.send_json({"status": "ok", "message": f"Kernel {kernel_id} deleted"})
-            #     else:
-            #         await self.send_json({"status": "error", "message": "No kernel_id provided"})
-            elif command == "exec":
-                # kernel_id = args[0] if len(args) > 0 else None
+            if command == "update":
+                kernels = self.cli.update()
+                await self.send_json({"status": "ok", "pipelines": kernels})
+            elif command == "close":
+                config_id = int(args[0]) if args else None
+                if config_id:
+                    msg = self.cli.close_pipeline(config_id)
+                    await self.send_json({"status": "ok", "message": msg})
+                else:
+                    await self.send_json({"status": "error", "message": "No config_id provided"})
+            elif command == "run":
                 config_id = int(args[0]) if len(args) > 0 else None
                 indexer = args[1] if len(args) > 1 else None
                 path_or_query =  args[2] if len(args) > 2 else None
@@ -190,14 +165,14 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
                     loop = asyncio.get_running_loop()
 
                     async def send_output(text):
-                        await self.send_json({"status": "output", "output": text})
+                        await self.send_json({"status": "output", "from": [config_id, calculation.id], "output": text})
 
                     def on_output(text):
                         asyncio.run_coroutine_threadsafe(send_output(text), loop)
 
                     status = await loop.run_in_executor(
                         None,
-                        self.cli.execute_code,
+                        self.cli.run_pipeline,
                         config_id,
                         content_, indexer, path_or_query,
                         on_output
@@ -230,7 +205,8 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
                 await self.send_json({"status": "error", "message": "Unknown command"})
         except Exception as e:
             await self.send_json({"status": "error", "message": str(e)})
-    
+
     @sync_to_async
     def update_calculation_status(self, calc_id, status):
+        """update calculation status"""
         Calculation.objects.filter(id=calc_id).update(status=status)
