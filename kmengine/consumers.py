@@ -169,6 +169,8 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
             "list_configs": self.handle_list_configs,
             "get_config": self.handle_get_config,
         }
+        # Set of commands that are long-running and should be dispatched in background
+        self.long_running_commands = {"run"}
 
     async def connect(self) -> None:
         """for client on client connect"""
@@ -194,7 +196,13 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
 
             handler = self.command_handlers.get(command)
             if handler:
-                await handler(args)
+                if command in self.long_running_commands:
+                    # Dispatch long-running handler as a background task
+                    asyncio.create_task(handler(args))
+                    await self.send_json({"status": "accepted", 
+                                         "message": f"{command} started"})
+                else:
+                    await handler(args)
             else:
                 await self.send_json({"status": "error",
                                       "message": "Unknown command"})
@@ -251,8 +259,8 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         )
         await self.update_calculation_status(calculation.id, status)
         await self.send_json({"status": "ok",
+                              "from": [config_id, calculation.id],
                               "message": "Execution finished"})
-
 
     async def handle_config(self, args: List[Any]) -> None:
         """KernelCLI config wrapper"""

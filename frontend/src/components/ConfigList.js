@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-const ConfigList = ({ ws }) => {
+const ConfigList = ({ ws, selectedId, onSelect, runningConfigIds = [] }) => {
   const [configs, setConfigs] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -9,7 +9,6 @@ const ConfigList = ({ ws }) => {
 
     let didSend = false;
 
-    // Function to send the list_configs command
     const sendListConfigs = () => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ command: "list_configs", args: [] }));
@@ -17,7 +16,6 @@ const ConfigList = ({ ws }) => {
       }
     };
 
-    // Handler for incoming messages
     const handleMessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -25,22 +23,17 @@ const ConfigList = ({ ws }) => {
           setConfigs(data.configs);
           setLoading(false);
         }
-      } catch (e) {
-        // Handle parse error or ignore unrelated messages
-      }
+      } catch (e) {}
     };
 
-    // If ws is already open, send immediately
     if (ws.readyState === WebSocket.OPEN) {
       sendListConfigs();
     } else if (ws.readyState === WebSocket.CONNECTING) {
-      // Otherwise, wait for the connection to open
       ws.addEventListener('open', sendListConfigs, { once: true });
     }
 
     ws.addEventListener('message', handleMessage);
 
-    // Cleanup
     return () => {
       if (!didSend && ws.readyState === WebSocket.CONNECTING) {
         ws.removeEventListener('open', sendListConfigs, { once: true });
@@ -56,19 +49,31 @@ const ConfigList = ({ ws }) => {
         <div className="text-secondary">Loading...</div>
       ) : (
         <ul className="list-group">
-          {configs.map(cfg => (
-            <li key={cfg.id} className="list-group-item mb-2">
-              <div className="d-flex justify-content-between align-items-center">
-                <span>
-                  <span className="fw-bold">{cfg.name}</span>
-                  <span className="text-muted ms-2 small">({cfg.type})</span>
-                </span>
-                <span className="badge bg-secondary">id: {cfg.id}</span>
-              </div>
-              <div className="text-muted small mt-1">Created: {cfg.created_at}</div>
-              <div className="text-muted small">Updated: {cfg.updated_at}</div>
-            </li>
-          ))}
+          {configs.map(cfg => {
+            const isSelected = selectedId === cfg.id;
+            const isRunning = runningConfigIds.includes(cfg.id);
+            let itemClass = "list-group-item mb-2 cursor-pointer";
+            if (isRunning) itemClass += " list-group-item-success";
+            if (isSelected) itemClass += " config-list-item-selected";
+            return (
+              <li
+                key={cfg.id}
+                className={itemClass}
+                style={{ cursor: 'pointer' }}
+                onClick={() => onSelect && onSelect(cfg.id)}
+              >
+                <div className="d-flex justify-content-between align-items-center">
+                  <span>
+                    <span className="fw-bold">{cfg.name}</span>
+                    <span className="text-muted ms-2 small">({cfg.type})</span>
+                  </span>
+                  <span className="badge bg-secondary">id: {cfg.id}</span>
+                </div>
+                <div className="text-muted small mt-1">Created: {cfg.created_at}</div>
+                <div className="text-muted small">Updated: {cfg.updated_at}</div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
