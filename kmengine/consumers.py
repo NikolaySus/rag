@@ -188,6 +188,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
                                       "message": "No data received"})
                 return
 
+            print(content)
             command = content.get("command")
             args = content.get("args", [])
 
@@ -274,30 +275,36 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
     async def handle_delete_config(self, args: List[Any]) -> None:
         """KernelCLI delete_config wrapper"""
         if not args:
-            await self.send_json({"status": "error", "message": "No config_id provided"})
+            await self.send_json({"status": "error",
+                                  "message": "No config_id provided"})
             return
         config_id = int(args[0])
         # Use sync_to_async for DB operation
         msg = await sync_to_async(self.cli.delete_config)(config_id)
-        await self.send_json({"status": "ok", "message": msg})
+        await self.send_json({"status": "ok",
+                              "message": msg})
 
     async def handle_list_configs(self, args: List[Any]) -> None:
         """KernelCLI list_configs wrapper"""
         # Use sync_to_async for DB operation
         configs = await sync_to_async(self.cli.list_configs)()
-        await self.send_json({"status": "ok", "configs": configs})
+        await self.send_json({"status": "ok",
+                              "configs": configs})
 
     async def handle_get_config(self, args: List[Any]) -> None:
         """KernelCLI get_config wrapper"""
         if not args:
-            await self.send_json({"status": "error", "message": "No config_id provided"})
+            await self.send_json({"status": "error",
+                                  "message": "No config_id provided"})
             return
         config_id = int(args[0])
         config = await sync_to_async(self.cli.get_config)(config_id)
         if config:
-            await self.send_json({"status": "ok", "config": config})
+            await self.send_json({"status": "ok",
+                                  "config": config})
         else:
-            await self.send_json({"status": "error", "message": f"Config {config_id} does not exist"})
+            await self.send_json({"status": "error",
+                                  "message": f"Config {config_id} does not exist"})
 
     @sync_to_async
     def update_calculation_status(self, calc_id, status):
