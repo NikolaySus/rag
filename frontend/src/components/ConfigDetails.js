@@ -1,5 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 
+/**
+ * Terminal state shape:
+ * {
+ *   [configId]: {
+ *     lines: string[],
+ *     currentRun: { configId, runNumber } | null
+ *   }
+ * }
+ */
 const ConfigDetails = ({ ws, configId, runStatus, onRun }) => {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -7,6 +16,114 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun }) => {
   // Form state
   const [indexer, setIndexer] = useState('true');
   const [query, setQuery] = useState('');
+
+  // Terminal output state per config
+  const [terminalState, setTerminalState] = useState({});
+  const terminalRef = useRef(null);
+
+  // Helper to get current config's terminal state
+  const getCurrentTerminal = () => terminalState[configId] || { lines: [], currentRun: null };
+
+  // Handle terminal output from WebSocket
+  useEffect(() => {
+    if (!ws) return;
+
+    const handleTerminalOutput = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        // Only handle output messages with 'from' field
+        if (data.status === 'output' && Array.isArray(data.from) && data.from.length === 2) {
+          const [msgConfigId, msgRunNumber] = data.from;
+          const key = String(msgConfigId);
+          setTerminalState(prevState => {
+            const prev = prevState[key] || { lines: [], currentRun: null };
+            // Only show output for the current run of this config
+            if (
+              !prev.currentRun || String(msgRunNumber) === String(prev.currentRun.runNumber)
+            ) {
+              let lines = [...prev.lines];
+              let output = data.output || '';
+              // Emulate carriage return: overwrite the last line
+              if (output.startsWith('\r')) {
+                output = output.replace(/^\r/, '');
+                if (lines.length === 0) {
+                  lines.push(output);
+                } else {
+                  lines[lines.length - 1] = output;
+                }
+              } else {
+                // Split output by newlines, append each as a new line
+                const splitLines = output.split('\n');
+                splitLines.forEach((line, idx) => {
+                  lines.push(line);
+                });
+              }
+              // Limit terminal buffer size (optional)
+              if (lines.length > 500) lines = lines.slice(lines.length - 500);
+              return {
+                ...prevState,
+                [key]: {
+                  ...prev,
+                  lines,
+                }
+              };
+            }
+            return prevState;
+          });
+        }
+        // Optionally handle completion
+        if (
+          data.status === 'ok' &&
+          Array.isArray(data.from) &&
+          data.from.length === 2
+        ) {
+          const [msgConfigId, msgRunNumber] = data.from;
+          const key = String(msgConfigId);
+          setTerminalState(prevState => {
+            const prev = prevState[key] || { lines: [], currentRun: null };
+            if (
+              prev.currentRun &&
+              String(msgRunNumber) === String(prev.currentRun.runNumber)
+            ) {
+              return {
+                ...prevState,
+                [key]: {
+                  ...prev,
+                  lines: [...prev.lines, '[Execution finished]'],
+                }
+              };
+            }
+            return prevState;
+          });
+        }
+      } catch (e) {}
+    };
+
+    ws.addEventListener('message', handleTerminalOutput);
+    return () => {
+      ws.removeEventListener('message', handleTerminalOutput);
+    };
+  }, [ws]);
+
+  // When a new run starts, reset terminal output and set currentRun for this config
+  useEffect(() => {
+    if (runStatus?.status === 'running' && runStatus.runNumber && configId) {
+      setTerminalState(prevState => ({
+        ...prevState,
+        [configId]: {
+          lines: [],
+          currentRun: { configId, runNumber: runStatus.runNumber }
+        }
+      }));
+    }
+  }, [runStatus, configId]);
+
+  // Auto-scroll terminal to bottom on new output
+  useEffect(() => {
+    if (terminalRef.current) {
+      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    }
+  }, [configId, terminalState]);
 
   // Fetch config details
   useEffect(() => {
@@ -54,6 +171,7 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun }) => {
     e.preventDefault();
     if (!ws || !configId) return;
     if (onRun) onRun(configId, indexer, query);
+    // Terminal will be reset in useEffect above
   };
 
   if (!configId) {
@@ -67,6 +185,8 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun }) => {
   if (!config) {
     return <div className="text-danger">No config data available.</div>;
   }
+
+  const { lines: terminalLines } = getCurrentTerminal();
 
   return (
     <div>
@@ -129,6 +249,32 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun }) => {
           </div>
         </div>
       </form>
+      {/* Terminal-like output area */}
+      <div
+        ref={terminalRef}
+        style={{
+          background: '#181818',
+          color: '#e0e0e0',
+          fontFamily: 'monospace',
+          fontSize: '0.95em',
+          borderRadius: 4,
+          padding: '12px',
+          minHeight: '120px',
+          maxHeight: '320px',
+          overflowY: 'auto',
+          marginBottom: '1rem',
+          border: '1px solid #333',
+        }}
+        aria-label="Terminal output"
+      >
+        {terminalLines.length === 0 ? (
+          <span style={{ color: '#666' }}>No output yet.</span>
+        ) : (
+          terminalLines.map((line, idx) => (
+            <div key={idx}>{line}</div>
+          ))
+        )}
+      </div>
     </div>
   );
 };

@@ -60,7 +60,7 @@ exec_task(fn_dict, {indexer}, {larg})
         if config_id not in self.pipelines:
             kernel_id = self.km.start_kernel(kernel_name="python3")
             self.pipelines[config_id] = kernel_id
-            code = "from fnuser import get_fn, exec_task" + code
+            code = "import tqdm_global_config\nfrom fnuser import get_fn, exec_task" + code
             on_output("Done some initial imports.\n")
         else:
             kernel_id = self.pipelines[config_id]
@@ -190,7 +190,6 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
                                       "message": "No data received"})
                 return
 
-            print(content)
             command = content.get("command")
             args = content.get("args", [])
 
