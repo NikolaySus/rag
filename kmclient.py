@@ -42,6 +42,9 @@ async def send_loop(websocket):
                     if command == "config":
                         with open(args[2], 'r', encoding='utf-8') as infile:
                             args[2] = infile.read()
+                    elif command == "update_config":
+                        with open(args[2], 'r', encoding='utf-8') as infile:
+                            args[2] = infile.read()
                     payload = {"command": command, "args": args}
                     await websocket.send(json.dumps(payload))
                 except Exception as e:

@@ -138,20 +138,33 @@ exec_task(fn_dict, {indexer}, {larg})
             }
         except Config.DoesNotExist:
             return {}
+            
+    @staticmethod
+    def update_config(config_id: int, new_name: str, new_content: str) -> str:
+        """Update a config's name and content by id"""
+        try:
+            config = Config.objects.get(id=config_id)
+            config.name = new_name
+            config.content = new_content
+            config.save()
+            return f"Config {config_id} updated"
+        except Config.DoesNotExist:
+            return f"Config {config_id} does not exist"
 
     def help(self) -> str:
         """show avaible commands"""
         return """
 Available commands:
-  config <name> <type> <json>  Create pipeline configuration from json
-  update                       Get updated list of active pipelines
-  run <id> <indexer> <arg>     Run pipeline with given configuration id
-  close <id>                   Close pipeline with given configuration id
-  delete_config <id>           Delete a pipeline configuration by id
-  list_configs                 List all pipeline configurations
-  get_config <id>              Get a pipeline configuration by id
-  config_creation_info         Get registry and default config
-  exit                         Exit the CLI (all kernels will be shut down)
+  config <name> <type> <json>          Create pipeline configuration from json
+  update                               Get updated list of active pipelines
+  run <id> <indexer> <arg>             Run pipeline with given configuration id
+  close <id>                           Close pipeline with given configuration id
+  delete_config <id>                   Delete a pipeline configuration by id
+  list_configs                         List all pipeline configurations
+  get_config <id>                      Get a pipeline configuration by id
+  config_creation_info                 Get registry and default config
+  update_config <id> <name> <content>  Update configuration's name and content by id
+  exit                                 Exit the CLI (kernels will be shut down)
 """
 
 
@@ -171,6 +184,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
             "list_configs": self.handle_list_configs,
             "get_config": self.handle_get_config,
             "config_creation_info": self.handle_config_creation_info,
+            "update_config": self.handle_update_config,
         }
         # Set of commands that are long-running and should be dispatched in background
         self.long_running_commands = {"run"}
@@ -311,7 +325,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         # Use sync_to_async for DB operation
         msg = await sync_to_async(self.cli.delete_config)(config_id)
         await self.send_json({"status": "ok",
-                              "message": msg})
+                              "deleted_id": config_id})
 
     async def handle_list_configs(self, args: List[Any]) -> None:
         """KernelCLI list_configs wrapper"""
@@ -344,6 +358,23 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
             "registry": self.registry,
             "default_config": default_config,
         })
+
+    async def handle_update_config(self, args: List[Any]) -> None:
+        """KernelCLI update_config wrapper"""
+        if len(args) < 3:
+            await self.send_json({"status": "error",
+                                  "message": "Arguments required: id, new_name, new_content"})
+            return
+        config_id, new_name, new_content = int(args[0]), args[1], args[2]
+        # Validate new_content as JSON
+        # try:
+        #     json.loads(new_content)
+        # except Exception:
+        #     await self.send_json({"status": "error",
+        #                           "message": "new_content must be valid JSON"})
+        #     return
+        msg = await sync_to_async(self.cli.update_config)(config_id, new_name, new_content)
+        await self.send_json({"status": "ok", "message": msg})
 
     @sync_to_async
     def update_calculation_status(self, calc_id, status):
