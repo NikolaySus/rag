@@ -374,7 +374,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         #                           "message": "new_content must be valid JSON"})
         #     return
         msg = await sync_to_async(self.cli.update_config)(config_id, new_name, new_content)
-        await self.send_json({"status": "ok", "message": msg})
+        await self.send_json({"status": "ok", "updated_id": config_id})
 
     @sync_to_async
     def update_calculation_status(self, calc_id, status):

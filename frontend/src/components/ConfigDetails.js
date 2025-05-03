@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import AnsiToHtml from 'ansi-to-html';
 import splitAnsiLineByVisibleLength from '../utils/splitAnsiLineByVisibleLength';
+import ConfigCreateForm from './ConfigCreateForm';
 
 const ansiConverter = new AnsiToHtml({
   fg: '#e0e0e0',
@@ -19,9 +20,10 @@ const ansiConverter = new AnsiToHtml({
  *   }
  * }
  */
-const ConfigDetails = ({ ws, configId, runStatus, onRun }) => {
+const ConfigDetails = ({ ws, configId, runStatus, onRun, onConfigDeleted }) => {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [editMode, setEditMode] = useState(false);
 
   // Form state
   const [indexer, setIndexer] = useState('true');
@@ -34,13 +36,25 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun }) => {
   // Helper to get current config's terminal state
   const getCurrentTerminal = () => terminalState[configId] || { lines: [], currentRun: null };
 
-  // Handle terminal output from WebSocket
+  // Handle terminal output and deletion from WebSocket
   useEffect(() => {
     if (!ws) return;
 
     const handleTerminalOutput = (event) => {
       try {
         const data = JSON.parse(event.data);
+        
+        // Handle config deletion: if current config is deleted, notify parent
+        if (
+          data.command === "delete_config" ||
+          (data.status === "ok" && typeof data.deleted_id !== "undefined")
+        ) {
+          const deletedId = data.deleted_id ?? (Array.isArray(data.args) ? data.args[0] : undefined);
+          if (String(deletedId) === String(configId) && typeof onConfigDeleted === "function") {
+            onConfigDeleted();
+          }
+        }
+        
         // Only handle output messages with 'from' field
         if (data.status === 'output' && Array.isArray(data.from) && data.from.length === 2) {
           const [msgConfigId, msgRunNumber] = data.from;
@@ -119,7 +133,7 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun }) => {
     return () => {
       ws.removeEventListener('message', handleTerminalOutput);
     };
-  }, [ws]);
+  }, [ws, configId, onConfigDeleted]);
 
   // When a new run starts, reset terminal output and set currentRun for this config
   useEffect(() => {
@@ -207,15 +221,41 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun }) => {
   return (
     <div>
       <h2 className="mb-3">Config Details</h2>
-      <div className="mb-2">
-        <span className="fw-bold">{config.name}</span>
-        <span className="text-muted ms-2">({config.type})</span>
-        <span className="badge bg-secondary ms-2">id: {config.id}</span>
-      </div>
       <div className="text-muted small mb-2">Created: {config.created_at}</div>
       <div className="text-muted small mb-3">Updated: {config.updated_at}</div>
-      <h5>Content</h5>
-      <pre className="app-json-pre">{config.content}</pre>
+      {editMode ? (
+        <ConfigCreateForm
+          ws={ws}
+          mode="edit"
+          config={config}
+          onClose={() => setEditMode(false)}
+          onUpdated={() => {
+            setEditMode(false);
+            setLoading(true);
+            // Refetch config after update
+            if (ws && configId) {
+              ws.send(JSON.stringify({ command: "get_config", args: [String(configId)] }));
+            }
+          }}
+        />
+      ) : (
+        <>
+          <div className="mb-2">
+            <span className="fw-bold">{config.name}</span>
+            <span className="text-muted ms-2">({config.type})</span>
+            <span className="badge bg-secondary ms-2">id: {config.id}</span>
+          </div>
+          <h5>Content</h5>
+          <pre className="app-json-pre">{config.content}</pre>
+          <button
+            className="btn btn-outline-primary mb-3"
+            onClick={() => setEditMode(true)}
+            style={{ minWidth: 100 }}
+          >
+            Edit
+          </button>
+        </>
+      )}
       <hr />
       <form className="mb-3" onSubmit={handleRun}>
         <div className="row align-items-end">
