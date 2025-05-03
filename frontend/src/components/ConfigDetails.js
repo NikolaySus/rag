@@ -1,4 +1,14 @@
 import React, { useEffect, useState, useRef } from 'react';
+import AnsiToHtml from 'ansi-to-html';
+import splitAnsiLineByVisibleLength from '../utils/splitAnsiLineByVisibleLength';
+
+const ansiConverter = new AnsiToHtml({
+  fg: '#e0e0e0',
+  bg: '#181818',
+  newline: true,
+  escapeXML: true,
+  stream: false,
+});
 
 /**
  * Terminal state shape:
@@ -47,15 +57,21 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun }) => {
               if (output.startsWith('\r')) {
                 output = output.replace(/^\r/, '');
                 if (lines.length === 0) {
-                  lines.push(output);
+                  // Split and push all chunks
+                  splitAnsiLineByVisibleLength(output).forEach(chunk => lines.push(chunk));
+                  lines.pop();
                 } else {
-                  lines[lines.length - 1] = output;
+                  // Overwrite last line, but may need to split into multiple lines
+                  // Remove the last line, then add all chunks
+                  lines.pop();
+                  splitAnsiLineByVisibleLength(output).forEach(chunk => lines.push(chunk));
+                  lines.pop();
                 }
               } else {
-                // Split output by newlines, append each as a new line
+                // Split output by newlines, then split each line by length and append
                 const splitLines = output.split('\n');
                 splitLines.forEach((line, idx) => {
-                  lines.push(line);
+                  splitAnsiLineByVisibleLength(line).forEach(chunk => lines.push(chunk));
                 });
               }
               // Limit terminal buffer size (optional)
@@ -271,7 +287,10 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun }) => {
           <span style={{ color: '#666' }}>No output yet.</span>
         ) : (
           terminalLines.map((line, idx) => (
-            <div key={idx}>{line}</div>
+            <div
+              key={idx}
+              dangerouslySetInnerHTML={{ __html: ansiConverter.toHtml(line) }}
+            />
           ))
         )}
       </div>

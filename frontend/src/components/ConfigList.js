@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
+import ConfigCreateForm from './ConfigCreateForm';
 
 const ConfigList = ({ ws, selectedId, onSelect, runningConfigIds = [] }) => {
   const [configs, setConfigs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
-  useEffect(() => {
+  // Fetch configs
+  const fetchConfigs = React.useCallback(() => {
     if (!ws) return;
 
     let didSend = false;
@@ -42,14 +45,46 @@ const ConfigList = ({ ws, selectedId, onSelect, runningConfigIds = [] }) => {
     };
   }, [ws]);
 
+  useEffect(() => {
+    const cleanup = fetchConfigs();
+    return cleanup;
+  }, [fetchConfigs]);
+
+  // Modal backdrop and dialog
+  const Modal = ({ children, onClose }) => (
+    <div
+      className="modal fade show"
+      style={{
+        display: 'block',
+        background: 'rgba(0,0,0,0.3)',
+        position: 'fixed',
+        zIndex: 1050,
+        top: 0, left: 0, right: 0, bottom: 0,
+      }}
+      tabIndex="-1"
+      onClick={onClose}
+    >
+      <div
+        className="modal-dialog"
+        style={{ pointerEvents: 'auto', marginTop: '10vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="modal-content">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="p-3">
       <h3 className="mb-4">Configs</h3>
       {loading ? (
         <div className="text-secondary">Loading...</div>
       ) : (
-        <ul className="list-group">
-          {configs.map(cfg => {
+        <>
+          <ul className="list-group">
+            {configs.map(cfg => {
             const isSelected = selectedId === cfg.id;
             const isRunning = runningConfigIds.includes(cfg.id);
             let itemClass = "list-group-item mb-2 cursor-pointer";
@@ -74,7 +109,29 @@ const ConfigList = ({ ws, selectedId, onSelect, runningConfigIds = [] }) => {
               </li>
             );
           })}
-        </ul>
+          </ul>
+          <div className="d-flex justify-content-end mt-4">
+            <button
+              className="btn btn-primary"
+              onClick={() => setShowCreateModal(true)}
+            >
+              + Create Config
+            </button>
+          </div>
+        </>
+      )}
+      {showCreateModal && (
+        <Modal onClose={() => setShowCreateModal(false)}>
+          <ConfigCreateForm
+            ws={ws}
+            onClose={() => setShowCreateModal(false)}
+            onCreated={() => {
+              setShowCreateModal(false);
+              setLoading(true);
+              fetchConfigs();
+            }}
+          />
+        </Modal>
       )}
     </div>
   );

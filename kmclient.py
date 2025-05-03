@@ -57,7 +57,7 @@ async def receive_loop(websocket):
             async for message in websocket:
                 try:
                     data = json.loads(message)
-                    if True:#not "output" in data:
+                    if not "output" in data:
                         #if not "message" in data:
                         print_in_terminal(f"[Server] {data}\n")
                     else:

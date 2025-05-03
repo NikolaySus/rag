@@ -1,5 +1,6 @@
 """All magic goes here"""
 
+import json
 import asyncio
 from typing import Any, Callable, List, Dict
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -7,7 +8,6 @@ from jupyter_client import MultiKernelManager
 
 from asgiref.sync import sync_to_async
 from .models import Calculation, Config
-
 
 class KernelCLI:
     """MultiKernelManager wrapper"""
@@ -150,6 +150,7 @@ Available commands:
   delete_config <id>           Delete a pipeline configuration by id
   list_configs                 List all pipeline configurations
   get_config <id>              Get a pipeline configuration by id
+  config_creation_info         Get registry and default config
   exit                         Exit the CLI (all kernels will be shut down)
 """
 
@@ -159,6 +160,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(args, kwargs)
+        self.registry = None
         self.cli: KernelCLI = KernelCLI()
         self.command_handlers: Dict[str, Callable[[List[Any]], None]] = {
             "update": self.handle_update,
@@ -168,10 +170,22 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
             "delete_config": self.handle_delete_config,
             "list_configs": self.handle_list_configs,
             "get_config": self.handle_get_config,
+            "config_creation_info": self.handle_config_creation_info,
         }
         # Set of commands that are long-running and should be dispatched in background
         self.long_running_commands = {"run"}
 
+    def gen_default(self):
+        """Generate default config from first options in registry"""
+        return {
+            k: {"path": next(iter(self.registry[k])), "settings": dict()} for k in self.registry
+        }
+    
+    def update_registry(self):
+        """Update dict of options"""
+        from simpletools import REGISTRY
+        self.registry = REGISTRY
+    
     async def connect(self) -> None:
         """for client on client connect"""
         await self.accept()
@@ -268,10 +282,18 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
                                   "message": "Arguments required: name, type, content"})
             return
         name, type_, content_ = args[0], args[1], args[2]
+        content_json = json.loads(content_)
+        if (content_json["indexer"]["path"] not in self.registry["indexer"] or
+            content_json["retriever"]["path"] not in self.registry["retriever"] or
+            content_json["augmenter"]["path"] not in self.registry["augmenter"] or
+            content_json["generator"]["path"] not in self.registry["generator"]):
+            await self.send_json({"status": "error",
+                                  "message": "Bad function path"})
+            return
         config = await sync_to_async(Config.objects.create)(
             name=name,
             type=type_,
-            content=content_,
+            content=json.dumps(content_json),
         )
         await self.send_json({
             "status": "ok",
@@ -312,6 +334,16 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         else:
             await self.send_json({"status": "error",
                                   "message": f"Config {config_id} does not exist"})
+    
+    async def handle_config_creation_info(self, args: List[Any]) -> None:
+        """Send registry and default config for config creation UI"""
+        self.update_registry()
+        default_config = self.gen_default()
+        await self.send_json({
+            "status": "ok",
+            "registry": self.registry,
+            "default_config": default_config,
+        })
 
     @sync_to_async
     def update_calculation_status(self, calc_id, status):
