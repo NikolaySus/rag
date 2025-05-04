@@ -11,6 +11,11 @@ const App = () => {
   const [runningConfigIds, setRunningConfigIds] = useState([]);
   const [runStatusMap, setRunStatusMap] = useState({}); // { [configId]: { status, runNumber } }
   const wsRef = useRef(null);
+  const [configsReloadKey, setConfigsReloadKey] = useState(0);
+
+  const handleConfigsChanged = () => {
+    setConfigsReloadKey(k => k + 1); // Triggers ConfigList to reload
+  };
 
   // Central message handler
   useEffect(() => {
@@ -96,6 +101,7 @@ const App = () => {
             selectedId={selectedConfigId}
             onSelect={setSelectedConfigId}
             runningConfigIds={runningConfigIds}
+            reloadKey={configsReloadKey} // Pass reloadKey to force re-fetch
           />
         </div>
         <div className="col p-4">
@@ -109,6 +115,7 @@ const App = () => {
             configId={selectedConfigId}
             runStatus={getRunStatus(selectedConfigId)}
             onRun={runConfig}
+            onConfigsChanged={handleConfigsChanged} // Pass down
           />
         </div>
       </div>

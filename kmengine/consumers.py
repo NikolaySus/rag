@@ -218,6 +218,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
                                       "message": "No data received"})
                 return
 
+            print(content)
             command = content.get("command")
             args = content.get("args", [])
 

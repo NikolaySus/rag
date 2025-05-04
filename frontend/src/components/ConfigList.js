@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ConfigCreateForm from './ConfigCreateForm';
 
-const ConfigList = ({ ws, selectedId, onSelect, runningConfigIds = [] }) => {
+const ConfigList = ({ ws, selectedId, onSelect, runningConfigIds = [], reloadKey }) => {
   const [configs, setConfigs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -50,7 +50,7 @@ const ConfigList = ({ ws, selectedId, onSelect, runningConfigIds = [] }) => {
   useEffect(() => {
     const cleanup = fetchConfigs();
     return cleanup;
-  }, [fetchConfigs]);
+  }, [fetchConfigs, reloadKey]);
 
   // Delete config handler
   const handleDelete = (id) => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 
 const COMPONENTS = ["indexer", "retriever", "augmenter", "generator"];
 
@@ -27,8 +27,11 @@ const ConfigCreateForm = ({
   onClose,
   onCreated,
   mode = "create", // "create" or "edit"
-  config,         // for edit: { id, name, content }
-  onUpdated,      // for edit: callback after update
+  config,          // for edit: { id, name, content }
+  onUpdated,       // for edit: callback after update
+  autoSave = false,
+  onAutoSave,
+  onConfigsChanged
 }) => {
   const [loading, setLoading] = useState(true);
   const [registry, setRegistry] = useState({});
@@ -43,16 +46,20 @@ const ConfigCreateForm = ({
   });
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  
+  // Track if we should skip the next auto-save (on initial config load in edit mode)
+  const skipNextAutoSaveRef = useRef(false);
+
+  const didSend = useRef(false);
 
   // Always fetch registry/defaults on mount
   useEffect(() => {
     if (!ws) return;
     setLoading(true);
-    let didSend = false;
     const sendCreationInfo = () => {
-      if (ws.readyState === WebSocket.OPEN) {
+      if (ws.readyState === WebSocket.OPEN && !didSend.current) {
+        didSend.current = true;
         ws.send(JSON.stringify({ command: "config_creation_info", args: [] }));
-        didSend = true;
       }
     };
     const handleMessage = (event) => {
@@ -66,6 +73,8 @@ const ConfigCreateForm = ({
             if (mode === "edit" && config) {
               // Parse content JSON to get component paths
               const parsed = parseContent(config.content);
+              // Set skipNextAutoSaveRef to true before setting form
+              skipNextAutoSaveRef.current = true;
               return {
                 ...prev,
                 name: config.name,
@@ -94,7 +103,7 @@ const ConfigCreateForm = ({
     }
     ws.addEventListener("message", handleMessage);
     return () => {
-      if (!didSend && ws.readyState === WebSocket.CONNECTING) {
+      if (!didSend.current && ws.readyState === WebSocket.CONNECTING) {
         ws.removeEventListener("open", sendCreationInfo, { once: true });
       }
       ws.removeEventListener("message", handleMessage);
@@ -106,6 +115,8 @@ const ConfigCreateForm = ({
   useEffect(() => {
     if (mode === "edit" && config) {
       const parsed = parseContent(config.content);
+      // Set skipNextAutoSaveRef to true before setting form
+      skipNextAutoSaveRef.current = true;
       setForm((prev) => ({
         ...prev,
         name: config.name,
@@ -116,6 +127,42 @@ const ConfigCreateForm = ({
       }));
     }
   }, [mode, config]);
+  
+
+  // Instant auto-save on every change in edit+autoSave mode, but not on initial load
+  useEffect(() => {
+    if (
+      mode === "edit" &&
+      autoSave &&
+      typeof ws !== "undefined" &&
+      config &&
+      (form.name || form.indexer || form.retriever || form.augmenter || form.generator)
+    ) {
+      if (skipNextAutoSaveRef.current) {
+        // Skip this auto-save, reset the flag
+        skipNextAutoSaveRef.current = false;
+        return;
+      }
+      // Build content from selectors
+      const content = buildContent(form);
+      const message = {
+        command: "update_config",
+        args: [
+          config.id,
+          form.name,
+          content,
+        ],
+      };
+      ws.send(JSON.stringify(message));
+      if (typeof onAutoSave === "function") {
+        onAutoSave(form);
+      }
+      if (typeof onConfigsChanged === "function") {
+        onConfigsChanged();
+      }
+    }
+    // eslint-disable-next-line
+  }, [form, mode, autoSave, ws, config]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -213,7 +260,7 @@ const ConfigCreateForm = ({
 
   return (
     <form onSubmit={handleSubmit} className="p-3">
-      <h5>{mode === "edit" ? "Edit Config" : "Create New Config"}</h5>
+      <h5>{mode === "edit" ? "(editable)" : "Create New Config"}</h5>
       <div className="mb-3">
         <label className="form-label">Name</label>
         <input
@@ -255,29 +302,31 @@ const ConfigCreateForm = ({
         </button>
       )}
       {error && <div className="alert alert-danger">{error}</div>}
-      <div className="d-flex justify-content-end">
-        <button
-          type="button"
-          className="btn btn-secondary me-2"
-          onClick={onClose}
-          disabled={submitting}
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          className="btn btn-primary"
-          disabled={submitting}
-        >
-          {submitting
-            ? mode === "edit"
-              ? "Saving..."
-              : "Creating..."
-            : mode === "edit"
-            ? "Save"
-            : "Create"}
-        </button>
-      </div>
+      {!(mode === "edit" && autoSave) && (
+        <div className="d-flex justify-content-end">
+          <button
+            type="button"
+            className="btn btn-secondary me-2"
+            onClick={onClose}
+            disabled={submitting}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={submitting}
+          >
+            {submitting
+              ? mode === "edit"
+                ? "Saving..."
+                : "Creating..."
+              : mode === "edit"
+              ? "Save"
+              : "Create"}
+          </button>
+        </div>
+      )}
     </form>
   );
 };

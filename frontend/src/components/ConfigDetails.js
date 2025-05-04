@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import AnsiToHtml from 'ansi-to-html';
 import splitAnsiLineByVisibleLength from '../utils/splitAnsiLineByVisibleLength';
 import ConfigCreateForm from './ConfigCreateForm';
@@ -20,11 +20,9 @@ const ansiConverter = new AnsiToHtml({
  *   }
  * }
  */
-const ConfigDetails = ({ ws, configId, runStatus, onRun, onConfigDeleted }) => {
+const ConfigDetails = ({ ws, configId, runStatus, onRun, onConfigDeleted, onConfigsChanged }) => {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-
   // Form state
   const [indexer, setIndexer] = useState('true');
   const [query, setQuery] = useState('');
@@ -155,6 +153,33 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun, onConfigDeleted }) => {
     }
   }, [configId, terminalState]);
 
+  // Auto-save handler for ConfigCreateForm
+  const handleAutoSave = useCallback(
+    (form) => {
+      if (!ws || !config) return;
+      // Build content from selectors
+      const COMPONENTS = ["indexer", "retriever", "augmenter", "generator"];
+      const configJson = {};
+      COMPONENTS.forEach((c) => {
+        configJson[c] = {
+          path: form[c],
+          settings: {}, // settings ignored for now
+        };
+      });
+      const content = JSON.stringify(configJson, null, 2);
+      const message = {
+        command: "update_config",
+        args: [
+          config.id,
+          form.name,
+          content,
+        ],
+      };
+      ws.send(JSON.stringify(message));
+    },
+    [ws, config]
+  );
+
   // Fetch config details
   useEffect(() => {
     if (!ws || !configId) {
@@ -221,41 +246,14 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun, onConfigDeleted }) => {
   return (
     <div>
       <h2 className="mb-3">Config Details</h2>
-      <div className="text-muted small mb-2">Created: {config.created_at}</div>
-      <div className="text-muted small mb-3">Updated: {config.updated_at}</div>
-      {editMode ? (
-        <ConfigCreateForm
-          ws={ws}
-          mode="edit"
-          config={config}
-          onClose={() => setEditMode(false)}
-          onUpdated={() => {
-            setEditMode(false);
-            setLoading(true);
-            // Refetch config after update
-            if (ws && configId) {
-              ws.send(JSON.stringify({ command: "get_config", args: [String(configId)] }));
-            }
-          }}
-        />
-      ) : (
-        <>
-          <div className="mb-2">
-            <span className="fw-bold">{config.name}</span>
-            <span className="text-muted ms-2">({config.type})</span>
-            <span className="badge bg-secondary ms-2">id: {config.id}</span>
-          </div>
-          <h5>Content</h5>
-          <pre className="app-json-pre">{config.content}</pre>
-          <button
-            className="btn btn-outline-primary mb-3"
-            onClick={() => setEditMode(true)}
-            style={{ minWidth: 100 }}
-          >
-            Edit
-          </button>
-        </>
-      )}
+      <ConfigCreateForm
+        ws={ws}
+        mode="edit"
+        config={config}
+        autoSave
+        onAutoSave={handleAutoSave}
+        onConfigsChanged={onConfigsChanged} // Pass down
+      />
       <hr />
       <form className="mb-3" onSubmit={handleRun}>
         <div className="row align-items-end">
