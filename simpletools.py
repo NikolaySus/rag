@@ -28,7 +28,7 @@ def import_path_find(stack):
     ans = (len(ans[1]) - 1) * "^." + ".".join(ans[0])
     return ans
 
-IMPORT_PATH = import_path_find(STACK).replace("^.", "") + "."
+IMPORT_PATH = import_path_find(STACK) + "."
 
 def register(category: str):
     """Add function to REGISTRY as name-linenumber pair"""
@@ -71,7 +71,7 @@ def simple_generator(query: str) -> bool:
 
 @register("indexer")
 def simple_indexer_copy(path: str) -> bool:
-    """My indexer"""
+    """My bad indexer"""
     for i in tqdm(range(10)):
         if i == 5:
             print(1/0)

@@ -2,6 +2,7 @@
 
 import json
 import asyncio
+import importlib
 from typing import Any, Callable, List, Dict
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from jupyter_client import MultiKernelManager
@@ -14,7 +15,7 @@ class KernelCLI:
 
     def __init__(self):
         self.km = MultiKernelManager()
-        self.pipelines = dict()
+        self.pipelines = dict()  # config_id: kernel_id
 
     def update(self) -> List[int]:
         """get updated list of active pipelines"""
@@ -90,7 +91,7 @@ exec_task(fn_dict, {indexer}, {larg})
                         on_output(text)
                 elif msg_type == "error":
                     ret = "fail"
-                    err = "❌ Error:\n" + "\n".join(content["traceback"])
+                    err = "❌ Error:\n" + "\n".join(content["traceback"]) + "\n"
                     on_output(err)
                 elif msg_type == "status" and content["execution_state"] == "idle":
                     break
@@ -104,19 +105,20 @@ exec_task(fn_dict, {indexer}, {larg})
         for kernel_id in self.km.list_kernel_ids():
             self.km.shutdown_kernel(kernel_id, now=True)
 
-    @staticmethod
-    def list_configs() -> List[Dict[str, Any]]:
+    def list_configs(self) -> List[Dict[str, Any]]:
         """Return a list of all configs as dicts"""
         ret = list(Config.objects.all().values("id", "name", "type", "created_at", "updated_at"))
+        active = self.update()
         for record in ret:
             record["created_at"] = str(record["created_at"])
             record["updated_at"] = str(record["updated_at"])
+            record["active"] = record["id"] in active
         return ret
 
-    @staticmethod
-    def delete_config(config_id: int) -> str:
+    def delete_config(self, config_id: int) -> str:
         """Delete a config by id"""
         try:
+            self.close_pipeline(config_id)
             config = Config.objects.get(id=config_id)
             config.delete()
             return f"Config {config_id} deleted"
@@ -173,7 +175,8 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(args, kwargs)
-        self.registry = None
+        self.regm = importlib.__import__('simpletools', fromlist=['REGISTRY'])
+        self.registry = self.regm.REGISTRY
         self.cli: KernelCLI = KernelCLI()
         self.command_handlers: Dict[str, Callable[[List[Any]], None]] = {
             "update": self.handle_update,
@@ -197,8 +200,8 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
     
     def update_registry(self):
         """Update dict of options"""
-        from simpletools import REGISTRY
-        self.registry = REGISTRY
+        self.regm = importlib.reload(self.regm)
+        self.registry = self.regm.REGISTRY
     
     async def connect(self) -> None:
         """for client on client connect"""
@@ -218,7 +221,6 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
                                       "message": "No data received"})
                 return
 
-            print(content)
             command = content.get("command")
             args = content.get("args", [])
 
@@ -227,8 +229,8 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
                 if command in self.long_running_commands:
                     # Dispatch long-running handler as a background task
                     asyncio.create_task(handler(args))
-                    await self.send_json({"status": "accepted", 
-                                         "message": f"{command} started"})
+                    await self.send_json({"status": "accepted",
+                                          "message": f"{command} started"})
                 else:
                     await handler(args)
             else:
@@ -250,6 +252,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         if config_id:
             msg = self.cli.close_pipeline(config_id)
             await self.send_json({"status": "ok",
+                                  "closed_id": config_id,
                                   "message": msg})
         else:
             await self.send_json({"status": "error",
@@ -326,7 +329,8 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         # Use sync_to_async for DB operation
         msg = await sync_to_async(self.cli.delete_config)(config_id)
         await self.send_json({"status": "ok",
-                              "deleted_id": config_id})
+                              "deleted_id": config_id,
+                              "message": msg})
 
     async def handle_list_configs(self, args: List[Any]) -> None:
         """KernelCLI list_configs wrapper"""
@@ -345,6 +349,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         config = await sync_to_async(self.cli.get_config)(config_id)
         if config:
             await self.send_json({"status": "ok",
+                                  "config_id": config_id,
                                   "config": config})
         else:
             await self.send_json({"status": "error",
@@ -375,7 +380,9 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         #                           "message": "new_content must be valid JSON"})
         #     return
         msg = await sync_to_async(self.cli.update_config)(config_id, new_name, new_content)
-        await self.send_json({"status": "ok", "updated_id": config_id})
+        await self.send_json({"status": "ok",
+                              "updated_id": config_id,
+                              "message": msg})
 
     @sync_to_async
     def update_calculation_status(self, calc_id, status):

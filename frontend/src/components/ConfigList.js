@@ -143,7 +143,7 @@ const ConfigList = ({ ws, selectedId, onSelect, runningConfigIds = [], reloadKey
                 <div className="d-flex justify-content-between align-items-center">
                   <span>
                     <span className="fw-bold">{cfg.name}</span>
-                    <span className="text-muted ms-2 small">({cfg.type})</span>
+                    <span className="text-muted ms-2 small">({cfg.active ? "active" : "not active"})</span>
                   </span>
                   <span>
                     <span className="badge bg-secondary me-2">id: {cfg.id}</span>

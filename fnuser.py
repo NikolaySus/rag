@@ -13,6 +13,11 @@ def exec_task(fn_dict: dict, indexer: bool, **kwargs):
 
 def get_fn(path: str):
     """dynamic function import like from 'module.next.some_function' string"""
+    parts = path.split("^.")
+    count = len(parts) - 1
+    remaining = parts[-1]
+    path_parts = remaining.split(".")
+    path = ".".join(path_parts[count:])  # colapse "^." parts
     module_name, fn = path.rsplit(".", 1)
     module_path = module_name.replace(".", "/") + ".py"
     module_spec = importlib.util.spec_from_file_location(module_name, module_path)

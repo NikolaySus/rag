@@ -227,6 +227,9 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun, onConfigDeleted, onConf
     if (!ws || !configId) return;
     if (onRun) onRun(configId, indexer, query);
     // Terminal will be reset in useEffect above
+    if (typeof onConfigsChanged === "function") {
+      setTimeout(function() {onConfigsChanged();}, 10);
+    }
   };
 
   if (!configId) {

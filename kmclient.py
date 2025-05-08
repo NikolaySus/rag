@@ -1,4 +1,4 @@
-"""CLI"""
+"""CLI for client"""
 
 import json
 import asyncio
