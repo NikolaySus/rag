@@ -27,8 +27,9 @@ const App = () => {
   useEffect(() => {
     if (wsRef.current) return;
 
-    const ws = new WebSocket('ws://127.0.0.1:8000/ws/kmengine/');
-    wsRef.current = ws;
+    //const ws = new WebSocket('ws://127.0.0.1:8000/ws/kmengine/');
+    wsRef.current = new WebSocket('ws://127.0.0.1:8000/ws/kmengine/');
+    const ws = wsRef.current;
 
     ws.onopen = () => {
       setLoaded(true);
@@ -110,12 +111,14 @@ const App = () => {
     return runStatusMap[String(configId)] || { status: 'idle', runNumber: null };
   };
 
+  const ws = wsRef.current;
+
   return (
     <div className="container-fluid vh-100">
       <div className="row h-100">
         <div className="col-12 col-md-3 col-lg-2 p-0 border-end bg-light">
           <ConfigList
-            ws={wsRef.current}
+            ws={ws}
             selectedId={selectedConfigId}
             onSelect={setSelectedConfigId}
             runningConfigIds={runningConfigIds}
@@ -130,7 +133,7 @@ const App = () => {
             </span>
           </div>
           <ConfigDetails
-            ws={wsRef.current}
+            ws={ws}
             configId={selectedConfigId}
             setSelectedConfigId={setSelectedConfigId}
             runStatus={getRunStatus(selectedConfigId)}

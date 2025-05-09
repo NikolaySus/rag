@@ -254,9 +254,14 @@ const ConfigCreateForm = ({
 
   const didSend = useRef(false);
 
-  // Always fetch registry/defaults on mount
+  // Only run on mount or when mode/ws changes
   useEffect(() => {
     if (!ws) return;
+    if (mode !== "create" && mode !== "edit") return;
+    
+    // Store current config reference to use inside effect
+    const currentConfig = mode === "edit" ? config : null;
+    
     setLoading(true);
     const sendCreationInfo = () => {
       if (ws.readyState === WebSocket.OPEN && !didSend.current) {
@@ -272,15 +277,15 @@ const ConfigCreateForm = ({
           setDefaults(data.default_config);
           // For create: set defaults; for edit: ignore defaults, use config values
           setForm((prev) => {
-            if (mode === "edit" && config) {
+            if (mode === "edit" && currentConfig) {
               // Parse content JSON to get component paths
-              const parsed = parseContent(config.content);
+              const parsed = parseContent(currentConfig.content);
               // Set skipNextAutoSaveRef to true before setting form
               skipNextAutoSaveRef.current = true;
               return {
                 ...prev,
-                name: config.name,
-                content: config.content,
+                name: currentConfig.name,
+                content: currentConfig.content,
                 ...Object.fromEntries(
                   COMPONENTS.map((c) => [c, parsed[c]?.path || ""])
                 ),
@@ -296,7 +301,9 @@ const ConfigCreateForm = ({
           });
         }
         setLoading(false);
-      } catch (e) {}
+      } catch (e) {
+        console.error("[DEBUG] Error handling message:", e);
+      }
     };
     if (ws.readyState === WebSocket.OPEN) {
       sendCreationInfo();
@@ -310,8 +317,8 @@ const ConfigCreateForm = ({
       }
       ws.removeEventListener("message", handleMessage);
     };
-    // eslint-disable-next-line
-  }, [ws, mode, config]);
+    // Only depend on ws and mode, not config
+  }, [ws, mode]);
 
   // If config prop changes in edit mode, update form
   useEffect(() => {
@@ -366,6 +373,7 @@ const ConfigCreateForm = ({
         skipNextAutoSaveRef.current = false;
         return;
       }
+      
       // Build content from selectors
       const content = buildContent(form);
       const message = {
@@ -384,8 +392,7 @@ const ConfigCreateForm = ({
         onConfigsChanged();
       }
     }
-    // eslint-disable-next-line
-  }, [form, mode, autoSave, ws, config]);
+  }, [form.name, form.indexer, form.retriever, form.augmenter, form.generator, mode, autoSave, ws, config]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;

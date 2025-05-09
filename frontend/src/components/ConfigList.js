@@ -46,7 +46,7 @@ const ConfigList = ({ ws, selectedId, onSelect, runningConfigIds = [], reloadKey
       }
       ws.removeEventListener('message', handleMessage);
     };
-  }, [ws, onConfigsLoaded]);
+  }, [ws]);
 
   useEffect(() => {
     const cleanup = fetchConfigs();

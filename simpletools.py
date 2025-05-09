@@ -7,37 +7,39 @@ import inspect
 from typing import List
 from tqdm import tqdm
 
-from example import example_indexer
+from registry import register
 
-REGISTRY = {
-    "indexer": dict(),
-    "retriever": dict(),
-    "augmenter": dict(),
-    "generator": dict()
-}
+# from example import example_indexer
 
-STACK = inspect.stack()
+# REGISTRY = {
+#     "indexer": dict(),
+#     "retriever": dict(),
+#     "augmenter": dict(),
+#     "generator": dict()
+# }
 
-def path_level_up(level):
-    """Add to sys path dir level levels upper than now"""
-    sys.path.append(os.path.dirname(os.path.abspath(__file__)).rsplit("/", level)[0])
+# STACK = inspect.stack()
 
-def import_path_find(stack):
-    """Get import path"""
-    files = [i.filename for i in stack if i.filename[-3:] == ".py"][:2]
-    pfx = os.path.commonprefix(files)
-    ans = [el[len(pfx):-3].split("/") for el in files]
-    ans = (len(ans[1]) - 1) * "^." + ".".join(ans[0])
-    return ans
+# def path_level_up(level):
+#     """Add to sys path dir level levels upper than now"""
+#     sys.path.append(os.path.dirname(os.path.abspath(__file__)).rsplit("/", level)[0])
 
-IMPORT_PATH = import_path_find(STACK) + "."
+# def import_path_find(stack):
+#     """Get import path"""
+#     files = [i.filename for i in stack if i.filename[-3:] == ".py"][:2]
+#     pfx = os.path.commonprefix(files)
+#     ans = [el[len(pfx):-3].split("/") for el in files]
+#     ans = (len(ans[1]) - 1) * "^." + ".".join(ans[0])
+#     return ans
 
-def register(category: str):
-    """Add function to REGISTRY as name-linenumber pair"""
-    def decorator(fn):
-        REGISTRY[category][IMPORT_PATH + fn.__name__] = inspect.getsourcelines(fn)
-        return fn
-    return decorator
+# IMPORT_PATH = import_path_find(STACK) + "."
+
+# def register(category: str):
+#     """Add function to REGISTRY as name-linenumber pair"""
+#     def decorator(fn):
+#         REGISTRY[category][IMPORT_PATH + fn.__name__] = inspect.getsourcelines(fn)
+#         return fn
+#     return decorator
 
 class Document:
     """Document or batch of document"""

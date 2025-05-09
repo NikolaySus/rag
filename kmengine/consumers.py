@@ -175,7 +175,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(args, kwargs)
-        self.regm = importlib.__import__('simpletools', fromlist=['REGISTRY'])
+        self.regm = importlib.__import__('register_all', fromlist=['REGISTRY'])
         self.registry = self.regm.REGISTRY
         self.cli: KernelCLI = KernelCLI()
         self.command_handlers: Dict[str, Callable[[List[Any]], None]] = {
