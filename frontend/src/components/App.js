@@ -12,9 +12,15 @@ const App = () => {
   const [runStatusMap, setRunStatusMap] = useState({}); // { [configId]: { status, runNumber } }
   const wsRef = useRef(null);
   const [configsReloadKey, setConfigsReloadKey] = useState(0);
+  const [configs, setConfigs] = useState([]); // New: configs state for sharing with ConfigDetails
 
   const handleConfigsChanged = () => {
     setConfigsReloadKey(k => k + 1); // Triggers ConfigList to reload
+  };
+
+  // Handler to receive configs from ConfigList
+  const handleConfigsLoaded = (configsList) => {
+    setConfigs(configsList);
   };
 
   // Central message handler
@@ -87,6 +93,18 @@ const App = () => {
     );
   }, []);
 
+  const updateStopConfig = useCallback((configId) => {
+    if (!configId) return;
+    // Set status to idle
+    setRunStatusMap(prev => ({
+      ...prev,
+      [String(configId)]: { status: 'idle', runNumber: null }
+    }));
+    setRunningConfigIds(prev =>
+      prev.includes(configId) ? prev.filter(e => e !== configId) : prev
+    );
+  }, []);
+
   // Get run status for a config
   const getRunStatus = (configId) => {
     return runStatusMap[String(configId)] || { status: 'idle', runNumber: null };
@@ -102,6 +120,7 @@ const App = () => {
             onSelect={setSelectedConfigId}
             runningConfigIds={runningConfigIds}
             reloadKey={configsReloadKey} // Pass reloadKey to force re-fetch
+            onConfigsLoaded={handleConfigsLoaded} // New: pass handler
           />
         </div>
         <div className="col p-4">
@@ -113,9 +132,12 @@ const App = () => {
           <ConfigDetails
             ws={wsRef.current}
             configId={selectedConfigId}
+            setSelectedConfigId={setSelectedConfigId}
             runStatus={getRunStatus(selectedConfigId)}
             onRun={runConfig}
+            onStop={updateStopConfig}
             onConfigsChanged={handleConfigsChanged} // Pass down
+            configs={configs} // New: pass configs array
           />
         </div>
       </div>

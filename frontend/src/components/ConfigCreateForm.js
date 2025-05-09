@@ -1,5 +1,5 @@
-
 import React, { useEffect, useState, useRef } from "react";
+import MonacoCodeEditorPopup from "./MonacoCodeEditorPopup"; // Import the popup
 
 const COMPONENTS = ["indexer", "retriever", "augmenter", "generator"];
 
@@ -41,6 +41,7 @@ const ComponentSelector = ({
   onChange,
   disabled,
   defaultValue,
+  setComponentContent,
 }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef();
@@ -81,8 +82,7 @@ const ComponentSelector = ({
 
   const handleLinkClick = (e) => {
     e.preventDefault();
-    // Debug message for clicking selected choice
-    console.log(`[DEBUG] Selected choice clicked for ${name}: ${value}`);
+    setComponentContent([name, value])
     // Do NOT open dropdown
   };
 
@@ -246,6 +246,8 @@ const ConfigCreateForm = ({
   });
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [componentContent, setComponentContent] = useState(null);
+  const [editorPopup, setEditorPopup] = useState({ open: false, code: "", compName: "", compPath: "" });
   
   // Track if we should skip the next auto-save (on initial config load in edit mode)
   const skipNextAutoSaveRef = useRef(false);
@@ -327,7 +329,28 @@ const ConfigCreateForm = ({
       }));
     }
   }, [mode, config]);
-  
+
+  // Show MonacoCodeEditorPopup when componentContent is set
+  useEffect(() => {
+    if (mode === "edit" && config && componentContent) {
+      const [compName, compPath] = componentContent;
+      if (
+        compName &&
+        compPath &&
+        registry[compName] &&
+        registry[compName][compPath]
+      ) {
+        const code = registry[compName][compPath][0];
+        setEditorPopup({
+          open: true,
+          lines: code,
+          compName,
+          compPath,
+        });
+      }
+      setComponentContent(null); // Reset trigger
+    }
+  }, [componentContent, mode, config, registry]);
 
   // Instant auto-save on every change in edit+autoSave mode, but not on initial load
   useEffect(() => {
@@ -380,6 +403,17 @@ const ConfigCreateForm = ({
         ),
       }));
     }
+  };
+
+  // Handlers for MonacoCodeEditorPopup
+  const handleEditorSave = (newLines) => {
+    console.log(`[DEBUG] Saved code for ${editorPopup.compName} (${editorPopup.compPath}):\n${newLines}`);
+    setEditorPopup({ open: false, code: "", compName: "", compPath: "" });
+  };
+
+  const handleEditorClose = () => {
+    console.log(`[DEBUG] Editor closed without saving. Component: ${editorPopup.compName} (${editorPopup.compPath})`);
+    setEditorPopup({ open: false, code: "", compName: "", compPath: "" });
   };
 
   const handleSubmit = (e) => {
@@ -459,7 +493,8 @@ const ConfigCreateForm = ({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="p-3">
+    <>
+      <form onSubmit={handleSubmit} className="p-3">
       <h5>{mode === "edit" ? "(editable)" : "Create New Config"}</h5>
       <div className="mb-3">
         <label className="form-label">Name</label>
@@ -482,6 +517,7 @@ const ConfigCreateForm = ({
           onChange={handleChange}
           disabled={submitting}
           defaultValue={defaults[comp]?.path || ""}
+          setComponentContent={setComponentContent}
         />
       ))}
       {mode === "edit" && defaults && (
@@ -520,9 +556,18 @@ const ConfigCreateForm = ({
           </button>
         </div>
       )}
-    </form>
+      </form>
+      {editorPopup.open && (
+        <MonacoCodeEditorPopup
+          lines={editorPopup.lines || []}
+          onSave={handleEditorSave}
+          onClose={handleEditorClose}
+          language="python"
+          title={`${editorPopup.compName}: ${stripCaretDotPrefixes(editorPopup.compPath)}`}
+        />
+      )}
+    </>
   );
 };
 
 export default ConfigCreateForm;
- ConfigCreateForm;

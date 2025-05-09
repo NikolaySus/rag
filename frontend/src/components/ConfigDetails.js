@@ -20,12 +20,21 @@ const ansiConverter = new AnsiToHtml({
  *   }
  * }
  */
-const ConfigDetails = ({ ws, configId, runStatus, onRun, onConfigDeleted, onConfigsChanged }) => {
+const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, onStop, onConfigDeleted, onConfigsChanged, configs = [] }) => {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(false);
   // Form state
   const [indexer, setIndexer] = useState('true');
   const [query, setQuery] = useState('');
+  
+  // Delete state
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Deactivate state
+  const [deactivating, setDeactivating] = useState(false);
+  const [deactivateError, setDeactivateError] = useState(null);
 
   // Terminal output state per config
   const [terminalState, setTerminalState] = useState({});
@@ -33,6 +42,17 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun, onConfigDeleted, onConf
 
   // Helper to get current config's terminal state
   const getCurrentTerminal = () => terminalState[configId] || { lines: [], currentRun: null };
+
+  // Sync config.active from configs prop
+  useEffect(() => {
+    if (!configId || !Array.isArray(configs)) return;
+    const found = configs.find(c => String(c.id) === String(configId));
+    if (found && config) {
+      if (config.active !== found.active) {
+        setConfig(prev => ({ ...prev, active: found.active }));
+      }
+    }
+  }, [configs, configId, config]); // Runs when configs, configId, or config changes
 
   // Handle terminal output and deletion from WebSocket
   useEffect(() => {
@@ -51,6 +71,27 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun, onConfigDeleted, onConf
           if (String(deletedId) === String(configId) && typeof onConfigDeleted === "function") {
             onConfigDeleted();
           }
+        }
+
+        // Handle deactivate/close response
+        if (
+          data.command === "close" ||
+          (data.status === "ok" && typeof data.closed_id !== "undefined")
+        ) {
+          const closedId = data.closed_id ?? (Array.isArray(data.args) ? data.args[0] : undefined);
+          if (String(closedId) === String(configId)) {
+            setDeactivating(false);
+            setDeactivateError(null);
+            // Optionally, update config.active to false
+            // setConfig(prev => prev ? { ...prev, active: false } : prev);
+            if (typeof onConfigsChanged === "function") {
+              onConfigsChanged();
+            }
+          }
+        }
+        if (data.status === "error" && data.command === "close") {
+          setDeactivating(false);
+          setDeactivateError(data.message || "Error deactivating config");
         }
         
         // Only handle output messages with 'from' field
@@ -100,30 +141,30 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun, onConfigDeleted, onConf
           });
         }
         // Optionally handle completion
-        if (
-          data.status === 'ok' &&
-          Array.isArray(data.from) &&
-          data.from.length === 2
-        ) {
-          const [msgConfigId, msgRunNumber] = data.from;
-          const key = String(msgConfigId);
-          setTerminalState(prevState => {
-            const prev = prevState[key] || { lines: [], currentRun: null };
-            if (
-              prev.currentRun &&
-              String(msgRunNumber) === String(prev.currentRun.runNumber)
-            ) {
-              return {
-                ...prevState,
-                [key]: {
-                  ...prev,
-                  lines: [...prev.lines, '[Execution finished]'],
-                }
-              };
-            }
-            return prevState;
-          });
-        }
+        // if (
+        //   data.status === 'ok' &&
+        //   Array.isArray(data.from) &&
+        //   data.from.length === 2
+        // ) {
+        //   const [msgConfigId, msgRunNumber] = data.from;
+        //   const key = String(msgConfigId);
+        //   setTerminalState(prevState => {
+        //     const prev = prevState[key] || { lines: [], currentRun: null };
+        //     if (
+        //       prev.currentRun &&
+        //       String(msgRunNumber) === String(prev.currentRun.runNumber)
+        //     ) {
+        //       return {
+        //         ...prevState,
+        //         [key]: {
+        //           ...prev,
+        //           lines: [...prev.lines, '[Execution finished]'],
+        //         }
+        //       };
+        //     }
+        //     return prevState;
+        //   });
+        // }
       } catch (e) {}
     };
 
@@ -131,7 +172,7 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun, onConfigDeleted, onConf
     return () => {
       ws.removeEventListener('message', handleTerminalOutput);
     };
-  }, [ws, configId, onConfigDeleted]);
+  }, [ws, configId, onConfigDeleted, onConfigsChanged]);
 
   // When a new run starts, reset terminal output and set currentRun for this config
   useEffect(() => {
@@ -228,7 +269,67 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun, onConfigDeleted, onConf
     if (onRun) onRun(configId, indexer, query);
     // Terminal will be reset in useEffect above
     if (typeof onConfigsChanged === "function") {
-      setTimeout(function() {onConfigsChanged();}, 10);
+      setTimeout(function() {onConfigsChanged();}, 50);
+    }
+  };
+
+  // Deactivate config logic
+  const handleDeactivate = () => {
+    if (!ws || !configId || deactivating || (config && config.active === false)) return;
+    setDeactivateError(null);
+    setDeactivating(true);
+
+    const message = {
+      command: "close",
+      args: [String(configId)],
+    };
+
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(message));
+    }
+
+    if (onStop) onStop(configId);
+  };
+
+  // Delete config logic
+  const handleDelete = () => {
+    if (!ws || !configId || deleting) return;
+    setDeleteError(null);
+    setDeleting(true);
+
+    const message = {
+      command: "delete_config",
+      args: [configId],
+    };
+
+    const handleDeleteResponse = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.status === "ok" && data.deleted_id === configId) {
+          setDeleting(false);
+          ws.removeEventListener("message", handleDeleteResponse);
+          setShowDeleteConfirm(false); // Close the modal after successful delete
+          if (typeof onConfigDeleted === "function") {
+            onConfigDeleted();
+          }
+          if (typeof onConfigsChanged === "function") {
+            onConfigsChanged();
+          }
+          if (typeof setSelectedConfigId === "function") {
+            setSelectedConfigId(null);
+          }
+        } else if (data.status === "error") {
+          setDeleteError(data.message || "Error deleting config");
+          setDeleting(false);
+          ws.removeEventListener("message", handleDeleteResponse);
+        }
+      } catch (e) {}
+    };
+
+    ws.addEventListener("message", handleDeleteResponse);
+
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(message));
     }
   };
 
@@ -248,7 +349,60 @@ const ConfigDetails = ({ ws, configId, runStatus, onRun, onConfigDeleted, onConf
 
   return (
     <div>
-      <h2 className="mb-3">Config Details</h2>
+      <h2 className="mb-3 d-flex justify-content-between align-items-center">
+        <span>Config Details</span>
+        <span className="d-flex gap-2">
+          <button
+            className="btn btn-outline-secondary btn-sm me-2"
+            onClick={handleDeactivate}
+            disabled={deactivating || config.active === false}
+            title={config.active === false ? "Already deactivated" : "Deactivate this config"}
+          >
+            {deactivating ? "Deactivating..." : "Deactivate"}
+          </button>
+          <button
+            className="btn btn-outline-danger btn-sm"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={deleting}
+            title="Delete this config"
+          >
+            {deleting ? "Deleting..." : "Delete"}
+          </button>
+        </span>
+      </h2>
+      {deactivateError && (
+        <div className="alert alert-danger">{deactivateError}</div>
+      )}
+      {deleteError && (
+        <div className="alert alert-danger">{deleteError}</div>
+      )}
+      {showDeleteConfirm && (
+        <div className="modal fade show" style={{
+          display: 'block',
+          background: 'rgba(0,0,0,0.3)',
+          position: 'fixed',
+          zIndex: 1050,
+          top: 0, left: 0, right: 0, bottom: 0,
+        }}>
+          <div className="modal-dialog" style={{ pointerEvents: 'auto', marginTop: '10vh' }}>
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Confirm Delete</h5>
+                <button type="button" className="btn-close" aria-label="Close" onClick={() => setShowDeleteConfirm(false)} />
+              </div>
+              <div className="modal-body">
+                <p>Are you sure you want to delete this config?</p>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>Cancel</button>
+                <button className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
+                  {deleting ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <ConfigCreateForm
         ws={ws}
         mode="edit"

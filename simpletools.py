@@ -7,6 +7,8 @@ import inspect
 from typing import List
 from tqdm import tqdm
 
+from example import example_indexer
+
 REGISTRY = {
     "indexer": dict(),
     "retriever": dict(),
@@ -33,7 +35,7 @@ IMPORT_PATH = import_path_find(STACK) + "."
 def register(category: str):
     """Add function to REGISTRY as name-linenumber pair"""
     def decorator(fn):
-        REGISTRY[category][IMPORT_PATH + fn.__name__] = inspect.getsourcelines(fn)[1]
+        REGISTRY[category][IMPORT_PATH + fn.__name__] = inspect.getsourcelines(fn)
         return fn
     return decorator
 

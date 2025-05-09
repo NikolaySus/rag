@@ -110,8 +110,8 @@ exec_task(fn_dict, {indexer}, {larg})
         ret = list(Config.objects.all().values("id", "name", "type", "created_at", "updated_at"))
         active = self.update()
         for record in ret:
-            record["created_at"] = str(record["created_at"])
-            record["updated_at"] = str(record["updated_at"])
+            record["created_at"] = f"{record["created_at"]: %H:%M:%S %d/%m/%Y}"
+            record["updated_at"] = f"{record["updated_at"]: %H:%M:%S %d/%m/%Y}"
             record["active"] = record["id"] in active
         return ret
 
@@ -125,18 +125,18 @@ exec_task(fn_dict, {indexer}, {larg})
         except Config.DoesNotExist:
             return f"Config {config_id} does not exist"
 
-    @staticmethod
-    def get_config(config_id: int) -> Dict[str, Any]:
+    def get_config(self, config_id: int) -> Dict[str, Any]:
         """Get a config by id"""
         try:
             config = Config.objects.get(id=config_id)
             return {
                 "id": config.id,
                 "name": config.name,
-                "type": config.type,
+                # "type": config.type,
                 "content": config.content,
-                "created_at": str(config.created_at),
-                "updated_at": str(config.updated_at),
+                # "created_at": str(config.created_at),
+                # "updated_at": str(config.updated_at),
+                "active": config.id in self.update()
             }
         except Config.DoesNotExist:
             return {}
