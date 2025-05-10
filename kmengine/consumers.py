@@ -1,14 +1,19 @@
 """All magic goes here"""
 
+import sys
+
 import json
 import asyncio
 import importlib
 from typing import Any, Callable, List, Dict
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from jupyter_client import MultiKernelManager
-
 from asgiref.sync import sync_to_async
-from .models import Calculation, Config
+
+from utils.string_importer_utils import reload_string_modules
+
+from .models import Calculation, Config, Script
+
 
 class KernelCLI:
     """MultiKernelManager wrapper"""
@@ -61,7 +66,7 @@ exec_task(fn_dict, {indexer}, {larg})
         if config_id not in self.pipelines:
             kernel_id = self.km.start_kernel(kernel_name="python3")
             self.pipelines[config_id] = kernel_id
-            code = "import tqdm_global_config\nfrom fnuser import get_fn, exec_task" + code
+            code = "import utils.tqdm_global_config\nfrom utils.fnuser import get_fn, exec_task" + code
             on_output("Done some initial imports.\n")
         else:
             kernel_id = self.pipelines[config_id]
@@ -174,9 +179,10 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
     """Ws consumer only for jsons"""
 
     def __init__(self, *args, **kwargs):
-        super().__init__(args, kwargs)
-        self.regm = importlib.__import__('register_all', fromlist=['REGISTRY'])
-        self.registry = self.regm.REGISTRY
+        super().__init__(*args, **kwargs)
+        # Do NOT call self.reload_registry() here!
+        self.regm = None
+        self.registry = None
         self.cli: KernelCLI = KernelCLI()
         self.command_handlers: Dict[str, Callable[[List[Any]], None]] = {
             "update": self.handle_update,
@@ -197,14 +203,44 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         return {
             k: {"path": next(iter(self.registry[k])), "settings": dict()} for k in self.registry
         }
-    
+
+    def reload_registry(self):
+        """
+        Reload dynamic module with imports from all Script paths in the DB.
+        Also, after importing REGISTRY, set a 'hidden' key in the in_memory_module
+        with the list of hidden script paths.
+        """
+        # Retrieve all script paths, both visible and hidden
+        all_scripts = list(Script.objects.all().values("path", "hidden"))
+        visible_paths = [s["path"] for s in all_scripts if not s["hidden"]]
+        hidden_paths = [s["path"] for s in all_scripts if s["hidden"]]
+
+        # Generate import statements for all script paths (visible and hidden)
+        import_lines = "\n".join([f"import {s['path']}" for s in all_scripts])
+        # Always import REGISTRY as before
+        import_lines += "\nfrom utils.registry import REGISTRY\n"
+
+        # Compose the code to also set the hidden list after REGISTRY import
+        import_lines += f"\nREGISTRY['hidden'] = {hidden_paths!r}\n"
+
+        print(import_lines)
+
+        # Call reload_string_modules with the generated import string
+        reload_string_modules({"in_memory_module": import_lines})
+
     def update_registry(self):
         """Update dict of options"""
-        self.regm = importlib.reload(self.regm)
+        self.reload_registry()
+        #self.regm = importlib.reload(self.regm)
+        self.regm = importlib.__import__('in_memory_module', fromlist=['REGISTRY'])
         self.registry = self.regm.REGISTRY
-    
+
     async def connect(self) -> None:
         """for client on client connect"""
+        # Safely reload registry with DB access
+        await sync_to_async(self.reload_registry)()
+        self.regm = importlib.__import__('in_memory_module', fromlist=['REGISTRY'])
+        self.registry = self.regm.REGISTRY
         await self.accept()
         await self.send_json({"status": "connected",
                               "output": self.cli.help()})
@@ -357,7 +393,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
     
     async def handle_config_creation_info(self, args: List[Any]) -> None:
         """Send registry and default config for config creation UI"""
-        self.update_registry()
+        await sync_to_async(self.update_registry)()
         default_config = self.gen_default()
         await self.send_json({
             "status": "ok",

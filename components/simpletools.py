@@ -1,13 +1,14 @@
 """My tools for RAG"""
 
-import os
-import sys
+# import os
+# import sys
 import time
-import inspect
+# import inspect
 from typing import List
 from tqdm import tqdm
 
-from registry import register
+from utils.registry import register
+from utils.document import Document
 
 # from example import example_indexer
 
@@ -40,13 +41,6 @@ from registry import register
 #         REGISTRY[category][IMPORT_PATH + fn.__name__] = inspect.getsourcelines(fn)
 #         return fn
 #     return decorator
-
-class Document:
-    """Document or batch of document"""
-
-    def __init__(self, utf8_content=None, metadata=None):
-        self.utf8_content=utf8_content
-        self.metadata=metadata
 
 @register("indexer")
 def simple_indexer(path: str) -> bool:

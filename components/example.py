@@ -1,7 +1,7 @@
 import time
 from typing import List
 from tqdm import tqdm
-from registry import register
+from utils.registry import register
 
 @register("indexer")
 def example_indexer(path: str) -> bool:

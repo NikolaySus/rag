@@ -269,7 +269,7 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
     if (onRun) onRun(configId, indexer, query);
     // Terminal will be reset in useEffect above
     if (typeof onConfigsChanged === "function") {
-      setTimeout(function() {onConfigsChanged();}, 50);
+      setTimeout(function() {onConfigsChanged();}, 128);
     }
   };
 

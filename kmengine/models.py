@@ -44,3 +44,8 @@ class Calculation(models.Model):
                 name="calculation_status_valid"
             ),
         ]
+
+class Script(models.Model):
+    """Script model"""
+    path = models.CharField(max_length=255, unique=True)
+    hidden = models.BooleanField(default=False)
