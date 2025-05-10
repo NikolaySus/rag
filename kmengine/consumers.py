@@ -1,16 +1,17 @@
 """All magic goes here"""
 
-import sys
-
+import re
 import json
 import asyncio
 import importlib
+from pathlib import Path
 from typing import Any, Callable, List, Dict
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from jupyter_client import MultiKernelManager
 from asgiref.sync import sync_to_async
 
 from utils.string_importer_utils import reload_string_modules
+from utils.import_getter import get_imports_as_string
 
 from .models import Calculation, Config, Script
 
@@ -194,6 +195,9 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
             "get_config": self.handle_get_config,
             "config_creation_info": self.handle_config_creation_info,
             "update_config": self.handle_update_config,
+            "list_scripts": self.handle_list_scripts,
+            "create_script": self.handle_create_script,
+            "get_script": self.handle_get_script,
         }
         # Set of commands that are long-running and should be dispatched in background
         self.long_running_commands = {"run"}
@@ -419,6 +423,72 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({"status": "ok",
                               "updated_id": config_id,
                               "message": msg})
+
+    async def handle_list_scripts(self, args: List[Any]) -> None:
+        """Return all script paths divided into visible and hidden."""
+        scripts = await sync_to_async(list)(Script.objects.all().values("path", "hidden"))
+        visible = [s["path"] for s in scripts if not s["hidden"]]
+        hidden = [s["path"] for s in scripts if s["hidden"]]
+        await self.send_json({
+            "status": "ok",
+            "visible": visible,
+            "hidden": hidden,
+        })
+
+    async def handle_create_script(self, args: List[Any]) -> None:
+        """Create a visible script record with the given path."""
+        if len(args) != 2:
+            await self.send_json({"status": "error",
+                                  "message": "Arguments required: path, start_with"})
+            return
+        path, start_with = args
+        # Check if valid
+        pattern = r"^components(\.[a-zA-Z_][a-zA-Z0-9_]*)+$"
+        if re.match(pattern, path) is None:
+            await self.send_json({"status": "error", "message": f"Path '{path}' is not valid"})
+            return
+        # Check for uniqueness
+        exists = await sync_to_async(Script.objects.filter(path=path).exists)()
+        if exists:
+            await self.send_json({"status": "error", "message": f"Script '{path}' already exists"})
+            return
+        # Create file
+        raw = path.replace(".", "/") + ".py"
+        output_file = Path(raw)
+        output_file.parent.mkdir(exist_ok=True, parents=True)
+        with output_file.open('w', encoding="utf-8") as myfile:
+            myfile.write(get_imports_as_string(raw) + "\n\n" + start_with)
+        script = await sync_to_async(Script.objects.create)(path=path, hidden=False)
+        await self.send_json({
+            "status": "ok",
+            "message": f"Script '{path}' created",
+            "script_id": script.id,
+        })
+
+    async def handle_get_script(self, args: List[Any]) -> None:
+        """Check if a script with the given path exists."""
+        if not args:
+            await self.send_json({"status": "error", "message": "No script path provided"})
+            return
+        path = args[0]
+        exists = await sync_to_async(Script.objects.filter(path=path).exists)()
+        if exists:
+            raw = path.replace(".", "/") + ".py"
+            file = Path(raw)
+            try:
+                with file.open('r', encoding="utf-8") as myfile:
+                    content = myfile.read()
+                    await self.send_json({"status": "ok",
+                                          "exists": True,
+                                          "path": path,
+                                          "content": content})
+            except Exception as e:
+                await self.send_json({"status": "error",
+                                      "exists": False,
+                                      "path": path,
+                                      "warning": f"Could not open file '{file}'. Reason: {e}"})
+        else:
+            await self.send_json({"status": "error", "exists": False, "path": path})
 
     @sync_to_async
     def update_calculation_status(self, calc_id, status):
