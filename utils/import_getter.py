@@ -22,6 +22,20 @@ def get_imports(path):
             yield Import(module, n.name.split('.'), n.asname)
 
 def get_imports_as_string(path):
-    """Get imports from file as string"""
-    import_list = get_imports(path)
-    return ""
+    """Get imports from file as a single string"""
+    lines = []
+    for imp in get_imports(path):
+        module_path = ".".join(imp.module)
+        name_path = ".".join(imp.name)
+
+        if module_path:  # This was a 'from ... import ...'
+            line = f"from {module_path} import {name_path}"
+        else:  # This was an 'import ...'
+            line = f"import {name_path}"
+
+        if imp.alias:
+            line += f" as {imp.alias}"
+
+        lines.append(line)
+
+    return "\n".join(lines)

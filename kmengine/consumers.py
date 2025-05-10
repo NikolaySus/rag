@@ -205,7 +205,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
     def gen_default(self):
         """Generate default config from first options in registry"""
         return {
-            k: {"path": next(iter(self.registry[k])), "settings": dict()} for k in self.registry
+            k: {"path": next(iter(self.registry[k])), "settings": dict()} for k in self.registry if k != "hidden"
         }
 
     def reload_registry(self):
@@ -456,8 +456,10 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         raw = path.replace(".", "/") + ".py"
         output_file = Path(raw)
         output_file.parent.mkdir(exist_ok=True, parents=True)
+        description = '"""Module description preset"""\n\n'
+        imports = get_imports_as_string("components/default.py")
         with output_file.open('w', encoding="utf-8") as myfile:
-            myfile.write(get_imports_as_string(raw) + "\n\n" + start_with)
+            myfile.write(description + imports + "\n\n\n" + start_with)
         script = await sync_to_async(Script.objects.create)(path=path, hidden=False)
         await self.send_json({
             "status": "ok",

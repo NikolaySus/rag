@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
-import MonacoCodeEditorPopup from "./MonacoCodeEditorPopup"; // Import the popup
+import MonacoCodeEditorPopup from "./MonacoCodeEditorPopup";
+import ItemSelector from "./ItemSelector"; // Import the generic selector
+import ComponentFileSelector from "./ComponentFileSelector"; // Import the file selector popup
 
 const COMPONENTS = ["indexer", "retriever", "augmenter", "generator"];
 
@@ -30,197 +32,6 @@ function stripCaretDotPrefixes(path) {
   return path.replace(/^(?:\^\.)+/, "");
 }
 
-/**
- * Custom dropdown for component selection with separate clickable link and dropdown arrow.
- */
-const ComponentSelector = ({
-  label,
-  name,
-  value,
-  options,
-  onChange,
-  disabled,
-  defaultValue,
-  setComponentContent,
-}) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef();
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handleClick = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) {
-        setOpen(false);
-      }
-    };
-    if (open) {
-      document.addEventListener("mousedown", handleClick);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-    };
-  }, [open]);
-
-  // Always show the value if present, even if not in options, but preprocess for display
-  const currentLabel = value
-    ? stripCaretDotPrefixes(value)
-    : "";
-
-  const handleSelect = (path) => {
-    setOpen(false);
-    if (path === "__create_new__") {
-      // Debug message for create new
-      console.log(`[DEBUG] Create new selected for ${name}`);
-      // Set to default value if provided
-      if (defaultValue) {
-        onChange({ target: { name, value: defaultValue } });
-      }
-    } else {
-      onChange({ target: { name, value: path } });
-    }
-  };
-
-  const handleLinkClick = (e) => {
-    e.preventDefault();
-    setComponentContent([name, value])
-    // Do NOT open dropdown
-  };
-
-  const handleArrowClick = (e) => {
-    e.preventDefault();
-    if (!disabled) setOpen((prev) => !prev);
-  };
-
-  return (
-    <div className="mb-3" ref={ref} style={{ position: "relative" }}>
-      <label className="form-label text-capitalize">{label}</label>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          minWidth: "180px",
-          border: "1px solid #ced4da",
-          borderRadius: "4px",
-          background: "#fff",
-          padding: 0,
-          opacity: disabled ? 0.6 : 1,
-        }}
-      >
-        {/* Link zone */}
-        <a
-          href="#"
-          className="form-link"
-          style={{
-            color: "#0d6efd",
-            textDecoration: "underline",
-            cursor: disabled ? "not-allowed" : "pointer",
-            flex: 1,
-            padding: "6px 12px",
-            background: "transparent",
-            border: "none",
-            outline: "none",
-            userSelect: "text",
-            minWidth: 0,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-          onClick={disabled ? undefined : handleLinkClick}
-          tabIndex={0}
-        >
-          {currentLabel || <span className="text-muted">Select...</span>}
-        </a>
-        {/* Divider */}
-        <div
-          style={{
-            width: "1px",
-            height: "28px",
-            background: "#ced4da",
-            margin: "0 2px",
-          }}
-        />
-        {/* Arrow zone */}
-        <button
-          type="button"
-          aria-label="Show options"
-          style={{
-            border: "none",
-            background: "transparent",
-            padding: "0 12px",
-            cursor: disabled ? "not-allowed" : "pointer",
-            height: "100%",
-            display: "flex",
-            alignItems: "center",
-            fontSize: "18px",
-            color: "#495057",
-          }}
-          disabled={disabled}
-          onClick={handleArrowClick}
-          tabIndex={0}
-        >
-          <span style={{ display: "inline-block", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
-            ▼
-          </span>
-        </button>
-      </div>
-        {open && !disabled && (
-          <div
-            className="dropdown-menu show"
-            style={{
-              position: "absolute",
-              zIndex: 1000,
-              minWidth: "180px",
-              background: "#fff",
-              border: "1px solid #ced4da",
-              borderRadius: "4px",
-              marginTop: "2px",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-              maxHeight: "200px",
-              overflowY: "auto",
-            }}
-          >
-            {Object.entries(options).map(([path, id]) => (
-              <button
-                type="button"
-                className="dropdown-item"
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  background: path === value ? "#e9ecef" : "#fff",
-                  color: "#212529",
-                  border: "none",
-                  padding: "8px 16px",
-                  cursor: "pointer",
-                }}
-                key={id}
-                onClick={() => handleSelect(path)}
-              >
-                {stripCaretDotPrefixes(path)}
-              </button>
-            ))}
-            <div style={{ borderTop: "1px solid #eee", margin: "4px 0" }} />
-            <button
-              type="button"
-              className="dropdown-item"
-              style={{
-                width: "100%",
-                textAlign: "left",
-                color: "#198754",
-                fontWeight: "bold",
-                border: "none",
-                background: "#fff",
-                padding: "8px 16px",
-                cursor: "pointer",
-              }}
-              onClick={() => handleSelect("__create_new__")}
-            >
-              + Create new
-            </button>
-          </div>
-        )}
-    </div>
-  );
-};
 
 const ConfigCreateForm = ({
   ws,
@@ -247,6 +58,111 @@ const ConfigCreateForm = ({
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [componentContent, setComponentContent] = useState(null);
+  
+  // State for file selector popup
+  const [fileSelector, setFileSelector] = useState({
+    open: false,
+    compName: "",
+    error: null,
+    creating: false,
+  });
+  
+  // State for visible/hidden files for file selector
+  const [visibleFiles, setVisibleFiles] = useState([]);
+  const [hiddenFiles, setHiddenFiles] = useState([]);
+
+  // Handler for ItemSelector new component create option
+  const handleComponentCreate = (compName) => {
+    // Request file list from backend
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ command: "list_scripts", args: [] }));
+      // Listen for the response
+      const handleListScripts = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.status === "ok" && Array.isArray(data.visible)) {
+            setVisibleFiles(data.visible);
+            setHiddenFiles(Array.isArray(data.hidden) ? data.hidden : []);
+            // DEV: add hidden to visible for development
+            setVisibleFiles((prev) => [...prev, ...(Array.isArray(data.hidden) ? data.hidden : [])]);
+            setFileSelector({ open: true, compName, error: null, creating: false });
+          }
+        } catch (e) {}
+        // Remove listener after handling
+        ws.removeEventListener("message", handleListScripts);
+      };
+      ws.addEventListener("message", handleListScripts);
+    }
+  };
+  
+  // Handlers for file selection/creation in popup
+  const handleFileSelected = (filePath) => {
+    // Update the form to use the selected file path
+    setForm((prev) => ({
+      ...prev,
+      [fileSelector.compName]: filePath,
+    }));
+    setFileSelector({ open: false, compName: "", error: null, creating: false });
+  };
+
+  const handleFileCreated = (newFilePath) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    
+    const compName = fileSelector.compName;
+    // Find the default path for this component type
+    const defaultPath = defaults[compName]?.path;
+    const startWith = 
+      registry[compName] && 
+      defaultPath && 
+      registry[compName][defaultPath] && 
+      registry[compName][defaultPath][0] 
+        ? registry[compName][defaultPath][0] 
+        : "";
+    
+    // Set creating state to show loading indicator
+    setFileSelector((prev) => ({ ...prev, creating: true, error: null }));
+
+    // Send create_script command to backend
+    ws.send(
+      JSON.stringify({
+        command: "create_script",
+        args: [newFilePath, startWith.join("")],
+      })
+    );
+
+    // Handle the response
+    const handleCreateScript = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.status === "ok") {
+          // Success: close popup and set form value
+          setForm((prev) => ({
+            ...prev,
+            [compName]: newFilePath,
+          }));
+          setFileSelector({ open: false, compName: "", error: null, creating: false });
+        } else if (data.status === "error") {
+          // Show error, keep popup open for retry
+          setFileSelector((prev) => ({
+            ...prev,
+            error: data.message || "Error creating file",
+            creating: false,
+          }));
+        }
+      } catch (e) {}
+      ws.removeEventListener("message", handleCreateScript);
+    };
+    ws.addEventListener("message", handleCreateScript);
+  };
+
+  const handleFileSelectorClose = () => {
+    setFileSelector({ open: false, compName: "", error: null, creating: false });
+  };
+  
+  // Handler for ItemSelector link click
+  const handleSelectorLinkClick = (name, value) => {
+    setComponentContent([name, value]);
+  };
   const [editorPopup, setEditorPopup] = useState({ open: false, code: "", compName: "", compPath: "" });
   
   // Track if we should skip the next auto-save (on initial config load in edit mode)
@@ -515,7 +431,7 @@ const ConfigCreateForm = ({
         />
       </div>
       {COMPONENTS.map((comp) => (
-        <ComponentSelector
+        <ItemSelector
           key={comp}
           label={comp}
           name={comp}
@@ -523,8 +439,8 @@ const ConfigCreateForm = ({
           options={registry[comp] || {}}
           onChange={handleChange}
           disabled={submitting}
-          defaultValue={defaults[comp]?.path || ""}
-          setComponentContent={setComponentContent}
+          onLinkClick={handleSelectorLinkClick}
+          onCreate={() => handleComponentCreate(comp)}
         />
       ))}
       {mode === "edit" && defaults && (
@@ -571,6 +487,21 @@ const ConfigCreateForm = ({
           onClose={handleEditorClose}
           language="python"
           title={`${editorPopup.compName}: ${stripCaretDotPrefixes(editorPopup.compPath)}`}
+        />
+      )}
+      {/* ComponentFileSelector popup for file selection/creation */}
+      {fileSelector.open && (
+        <ComponentFileSelector
+          open={fileSelector.open}
+          files={Object.fromEntries(
+            visibleFiles.map((filePath) => [filePath, filePath])
+          )}
+          onSelect={handleFileSelected}
+          onCreate={handleFileCreated}
+          onClose={handleFileSelectorClose}
+          title={`Select or create file for ${fileSelector.compName}`}
+          error={fileSelector.error}
+          creating={fileSelector.creating}
         />
       )}
     </>
