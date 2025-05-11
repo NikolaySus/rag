@@ -5,11 +5,13 @@ import MonacoEditor from "@monaco-editor/react";
  * Popup/modal code editor using Monaco.
  * 
  * Props:
- * - lines: array of strings (the code to edit)
- * - onSave: function(newLines: string[]) => void
+ * - lines: array of strings (the code to edit) OR string
+ * - onSave: function(newLines: string[] | string) => void
  * - onClose: function() => void
  * - language: string (optional, default 'python')
  * - title: string (optional)
+ * 
+ * The component auto-detects the type of `lines` (array or string) and saves in the same style.
  */
 const MonacoCodeEditorPopup = ({
   lines,
@@ -18,7 +20,13 @@ const MonacoCodeEditorPopup = ({
   language = "python",
   title = "Edit Code",
 }) => {
-  const [code, setCode] = useState((lines || []).join(" "));
+  // Determine initial code value and save style
+  const [saveAsString] = useState(() => typeof lines === "string");
+  const [code, setCode] = useState(() => {
+    if (typeof lines === "string") return lines;
+    if (Array.isArray(lines)) return lines.join("");
+    return "";
+  });
   const overlayRef = useRef();
 
   // Close on ESC key
@@ -47,8 +55,13 @@ const MonacoCodeEditorPopup = ({
 
   const handleSave = () => {
     if (onSave) {
-      const newLines = code.split(/(?<=\n)/g);
-      onSave(newLines);
+      if (saveAsString) {
+        onSave(code);
+      } else {
+        // Split into lines, preserving line endings
+        const newLines = code.split(/(?<=\n)/g);
+        onSave(newLines);
+      }
     }
   };
 

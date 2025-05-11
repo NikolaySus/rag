@@ -71,6 +71,23 @@ const ConfigCreateForm = ({
   const [visibleFiles, setVisibleFiles] = useState([]);
   const [hiddenFiles, setHiddenFiles] = useState([]);
 
+  // Helper to refresh registry/defaults from backend
+  const refreshRegistry = () => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ command: "config_creation_info", args: [] }));
+    const handleMessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.status === "ok" && data.registry && data.default_config) {
+          setRegistry(data.registry);
+          setDefaults(data.default_config);
+        }
+      } catch (e) {}
+      ws.removeEventListener("message", handleMessage);
+    };
+    ws.addEventListener("message", handleMessage);
+  };
+
   // Handler for ItemSelector new component create option
   const handleComponentCreate = (compName) => {
     // Request file list from backend
@@ -95,14 +112,54 @@ const ConfigCreateForm = ({
     }
   };
   
-  // Handlers for file selection/creation in popup
+  // State for script editor popup opened from sendGetScriptAndLog
+  const [scriptEditorPopup, setScriptEditorPopup] = useState({
+    open: false,
+    code: "",
+    path: "",
+  });
+
+  // Send get_script and open editor with response
+  const sendGetScriptAndLog = (filePath) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ command: "get_script", args: [filePath] }));
+    const handleGetScript = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.status === "ok") {
+          // Open MonacoCodeEditorPopup with code and path
+          setScriptEditorPopup({
+            open: true,
+            code: data.content,
+            path: data.path,
+          });
+        } else if (data.status === "error") {
+          // eslint-disable-next-line no-console
+          console.log("[ERROR] get_script response:", data);
+        }
+      } catch (e) {}
+      ws.removeEventListener("message", handleGetScript);
+    };
+    ws.addEventListener("message", handleGetScript);
+  };
+
+  // Handlers for script editor popup
+  const handleScriptEditorSave = (newCode) => {
+    console.log(`[DEBUG] Saved code for script (${scriptEditorPopup.path}):\n`, newCode);
+    setScriptEditorPopup({ open: false, code: "", path: "" });
+    refreshRegistry(); // Refresh registry after saving
+  };
+
+  const handleScriptEditorClose = () => {
+    console.log(`[DEBUG] Editor closed without saving. Script: ${scriptEditorPopup.path}`);
+    setScriptEditorPopup({ open: false, code: "", path: "" });
+  };
+
+  // Handler for file selection in popup
   const handleFileSelected = (filePath) => {
-    // Update the form to use the selected file path
-    setForm((prev) => ({
-      ...prev,
-      [fileSelector.compName]: filePath,
-    }));
+    // Do NOT update form component choice
     setFileSelector({ open: false, compName: "", error: null, creating: false });
+    sendGetScriptAndLog(filePath);
   };
 
   const handleFileCreated = (newFilePath) => {
@@ -126,7 +183,7 @@ const ConfigCreateForm = ({
     ws.send(
       JSON.stringify({
         command: "create_script",
-        args: [newFilePath, startWith.join("")],
+        args: [newFilePath, startWith.join ? startWith.join("") : startWith],
       })
     );
 
@@ -135,12 +192,10 @@ const ConfigCreateForm = ({
       try {
         const data = JSON.parse(event.data);
         if (data.status === "ok") {
-          // Success: close popup and set form value
-          setForm((prev) => ({
-            ...prev,
-            [compName]: newFilePath,
-          }));
+          // Success: close popup, do NOT set form value
           setFileSelector({ open: false, compName: "", error: null, creating: false });
+          // Now send get_script for the new file
+          sendGetScriptAndLog(newFilePath);
         } else if (data.status === "error") {
           // Show error, keep popup open for retry
           setFileSelector((prev) => ({
@@ -311,6 +366,8 @@ const ConfigCreateForm = ({
   }, [form.name, form.indexer, form.retriever, form.augmenter, form.generator, mode, autoSave, ws, config]);
 
   const handleChange = (e) => {
+    // Always reset skipNextAutoSaveRef so user changes are never skipped
+    skipNextAutoSaveRef.current = false;
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   };
@@ -332,6 +389,7 @@ const ConfigCreateForm = ({
   const handleEditorSave = (newLines) => {
     console.log(`[DEBUG] Saved code for ${editorPopup.compName} (${editorPopup.compPath}):\n${newLines}`);
     setEditorPopup({ open: false, code: "", compName: "", compPath: "" });
+    refreshRegistry(); // Refresh registry after saving
   };
 
   const handleEditorClose = () => {
@@ -487,6 +545,16 @@ const ConfigCreateForm = ({
           onClose={handleEditorClose}
           language="python"
           title={`${editorPopup.compName}: ${stripCaretDotPrefixes(editorPopup.compPath)}`}
+        />
+      )}
+      {/* MonacoCodeEditorPopup for script editing from sendGetScriptAndLog */}
+      {scriptEditorPopup.open && (
+        <MonacoCodeEditorPopup
+          lines={scriptEditorPopup.code}
+          onSave={handleScriptEditorSave}
+          onClose={handleScriptEditorClose}
+          language="python"
+          title={stripCaretDotPrefixes(scriptEditorPopup.path)}
         />
       )}
       {/* ComponentFileSelector popup for file selection/creation */}

@@ -48,10 +48,23 @@ class KernelCLI:
         del self.pipelines[config_id]
         return f"Pipeline {config_id} closed\n"
 
-    def run_pipeline(self, config_id: int, content_: str, indexer: str,
-                     path_or_query: str, on_output: Callable[[str], None]) -> str:
+    def ensure_pipeline(self, config_id: int) -> str:
         """
-        Run pipeline in ipython kernel, call on_output with each output chunk.
+        Ensure a pipeline exists for the given config_id.
+        If not, start a new kernel and register it immediately.
+        Returns the kernel_id.
+        """
+        if config_id not in self.pipelines:
+            kernel_id = self.km.start_kernel(kernel_name="python3")
+            self.pipelines[config_id] = kernel_id
+            return kernel_id, True
+        else:
+            return self.pipelines[config_id], False
+
+    def run_pipeline_kernel(self, kernel_id: str, content_: str, indexer: str, path_or_query: str,
+                            on_output: Callable[[str], None], need_init: bool) -> str:
+        """
+        Run pipeline code in the given kernel.
         """
         if indexer == "true":
             larg = f"path='{path_or_query}'"
@@ -64,13 +77,10 @@ code = {content_}
 fn_dict = {{k: get_fn(v['path']) for k, v in code.items()}}
 exec_task(fn_dict, {indexer}, {larg})
 """
-        if config_id not in self.pipelines:
-            kernel_id = self.km.start_kernel(kernel_name="python3")
-            self.pipelines[config_id] = kernel_id
+        # For new kernels, we need to do initial imports
+        if need_init:
             code = "import utils.tqdm_global_config\nfrom utils.fnuser import get_fn, exec_task" + code
             on_output("Done some initial imports.\n")
-        else:
-            kernel_id = self.pipelines[config_id]
 
         ret = "ok"
         km = self.km.get_kernel(kernel_id)
@@ -104,6 +114,15 @@ exec_task(fn_dict, {indexer}, {larg})
 
         client.stop_channels()
         return ret
+
+    # def run_pipeline(self, config_id: int, content_: str, indexer: str,
+    #                  path_or_query: str, on_output: Callable[[str], None]) -> str:
+    #     """
+    #     Run pipeline in ipython kernel, call on_output with each output chunk.
+    #     This is a compatibility wrapper around ensure_pipeline + run_pipeline_kernel.
+    #     """
+    #     kernel_id = self.ensure_pipeline(config_id)
+    #     return self.run_pipeline_kernel(kernel_id, content_, indexer, path_or_query, on_output)
 
     def shutdown_all_kernels(self) -> None:
         """stop all ipython kernels"""
@@ -227,8 +246,6 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         # Compose the code to also set the hidden list after REGISTRY import
         import_lines += f"\nREGISTRY['hidden'] = {hidden_paths!r}\n"
 
-        print(import_lines)
-
         # Call reload_string_modules with the generated import string
         reload_string_modules({"in_memory_module": import_lines})
 
@@ -299,7 +316,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
                                   "message": "No config_id provided"})
 
     async def handle_run(self, args: List[Any]) -> None:
-        """KernelCLI run_pipeline wrapper"""
+        """KernelCLI run_pipeline wrapper with immediate pipeline registration"""
         if len(args) < 3:
             await self.send_json({"status": "error",
                                   "message": "config_id, indexer and path_or_query required"})
@@ -313,6 +330,9 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         )
         loop = asyncio.get_running_loop()
 
+        # Ensure pipeline and get kernel_id immediately in main thread
+        kernel_id, need_init = await sync_to_async(self.cli.ensure_pipeline)(config_id)
+
         async def send_output(text):
             await self.send_json({"status": "output",
                                   "from": [config_id, calculation.id],
@@ -321,12 +341,14 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         def on_output(text):
             asyncio.run_coroutine_threadsafe(send_output(text), loop)
 
+        # Now run the code in the already-registered kernel
         status = await loop.run_in_executor(
             None,
-            self.cli.run_pipeline,
-            config_id,
+            self.cli.run_pipeline_kernel,
+            kernel_id,
             content_, indexer, path_or_query,
-            on_output
+            on_output,
+            need_init
         )
         await self.update_calculation_status(calculation.id, status)
         await self.send_json({"status": "ok",
@@ -394,7 +416,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         else:
             await self.send_json({"status": "error",
                                   "message": f"Config {config_id} does not exist"})
-    
+
     async def handle_config_creation_info(self, args: List[Any]) -> None:
         """Send registry and default config for config creation UI"""
         await sync_to_async(self.update_registry)()

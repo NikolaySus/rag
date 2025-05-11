@@ -181,7 +181,7 @@ const ItemSelector = ({
                 padding: "8px 16px",
                 cursor: "pointer",
               }}
-              key={id}
+              key={optValue}
               onClick={() => handleSelect(optValue)}
             >
               {stripCaretDotPrefixes(optValue)}
