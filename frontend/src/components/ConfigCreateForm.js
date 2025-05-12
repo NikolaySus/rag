@@ -112,27 +112,41 @@ const ConfigCreateForm = ({
     }
   };
   
-  // State for script editor popup opened from sendGetScriptAndLog
+  // State for script editor popup opened from openScriptEditorPopup
   const [scriptEditorPopup, setScriptEditorPopup] = useState({
     open: false,
     code: "",
     path: "",
   });
 
-  // Send get_script and open editor with response
-  const sendGetScriptAndLog = (filePath) => {
+  /**
+   * Fetches script code from backend and opens the appropriate Monaco editor popup.
+   * @param {string} filePath - The script file path.
+   * @param {object} [editorOptions] - Optional: { compName, compPath } for component editing.
+   */
+  const openScriptEditorPopup = (filePath, editorOptions = null) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     ws.send(JSON.stringify({ command: "get_script", args: [filePath] }));
     const handleGetScript = (event) => {
       try {
         const data = JSON.parse(event.data);
         if (data.status === "ok") {
-          // Open MonacoCodeEditorPopup with code and path
-          setScriptEditorPopup({
-            open: true,
-            code: data.content,
-            path: data.path,
-          });
+          if (editorOptions && editorOptions.compName && editorOptions.compPath) {
+            // Open component editor popup
+            setEditorPopup({
+              open: true,
+              lines: data.content,
+              compName: editorOptions.compName,
+              compPath: editorOptions.compPath,
+            });
+          } else {
+            // Open regular script editor popup
+            setScriptEditorPopup({
+              open: true,
+              code: data.content,
+              path: data.path || filePath,
+            });
+          }
         } else if (data.status === "error") {
           // eslint-disable-next-line no-console
           console.log("[ERROR] get_script response:", data);
@@ -159,7 +173,7 @@ const ConfigCreateForm = ({
   const handleFileSelected = (filePath) => {
     // Do NOT update form component choice
     setFileSelector({ open: false, compName: "", error: null, creating: false });
-    sendGetScriptAndLog(filePath);
+    openScriptEditorPopup(filePath);
   };
 
   const handleFileCreated = (newFilePath) => {
@@ -194,8 +208,8 @@ const ConfigCreateForm = ({
         if (data.status === "ok") {
           // Success: close popup, do NOT set form value
           setFileSelector({ open: false, compName: "", error: null, creating: false });
-          // Now send get_script for the new file
-          sendGetScriptAndLog(newFilePath);
+          // Now open script editor for the new file
+          openScriptEditorPopup(newFilePath);
         } else if (data.status === "error") {
           // Show error, keep popup open for retry
           setFileSelector((prev) => ({
@@ -308,27 +322,16 @@ const ConfigCreateForm = ({
     }
   }, [mode, config]);
 
-  // Show MonacoCodeEditorPopup when componentContent is set
+  // Open script editor when componentContent is set
   useEffect(() => {
     if (mode === "edit" && config && componentContent) {
       const [compName, compPath] = componentContent;
-      if (
-        compName &&
-        compPath &&
-        registry[compName] &&
-        registry[compName][compPath]
-      ) {
-        const code = registry[compName][compPath][0];
-        setEditorPopup({
-          open: true,
-          lines: code,
-          compName,
-          compPath,
-        });
+      if (compName && compPath) {
+        openScriptEditorPopup(compPath.slice(0, compPath.lastIndexOf(".")));
       }
       setComponentContent(null); // Reset trigger
     }
-  }, [componentContent, mode, config, registry]);
+  }, [componentContent, mode, config, ws]);
 
   // Instant auto-save on every change in edit+autoSave mode, but not on initial load
   useEffect(() => {
