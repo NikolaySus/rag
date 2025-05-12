@@ -14,8 +14,8 @@ dependencies = [
     "ipywidgets>=8.1.6",
     "jupyter-client>=8.6.3",
     "prompt-toolkit>=3.0.51",
+    "pylint>=3.3.6",
     "pylint-django>=2.6.1",
-    "redis>=5.2.1",
     "tqdm>=4.67.1",
     "websockets>=15.0.1",
 ]

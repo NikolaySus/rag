@@ -1,3 +1,12 @@
 {
+    "python.defaultInterpreterPath": "C:\\Users\\gorku\\Documents\\bmstu\\ВКР\\rag\\.venv\\Scripts\\python.exe",
+    "pylint.args": [
+        "--load-plugins=pylint_django",
+        "--django-settings-module=engine.settings",
+        "--max-line-length=120"
+    ],
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": "always"
+    },
     "codium.codeCompletion.enable": false
 }
