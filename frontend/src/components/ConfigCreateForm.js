@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useRef } from "react";
-import MonacoCodeEditorPopup from "./MonacoCodeEditorPopup";
-import ItemSelector from "./ItemSelector"; // Import the generic selector
+import { useEffect, useRef, useState } from "react";
 import ComponentFileSelector from "./ComponentFileSelector"; // Import the file selector popup
+import ItemSelector from "./ItemSelector"; // Import the generic selector
+import MonacoCodeEditorPopup from "./MonacoCodeEditorPopup";
 
 const COMPONENTS = ["indexer", "retriever", "augmenter", "generator"];
 
@@ -70,6 +70,10 @@ const ConfigCreateForm = ({
   // State for visible/hidden files for file selector
   const [visibleFiles, setVisibleFiles] = useState([]);
   const [hiddenFiles, setHiddenFiles] = useState([]);
+
+  // Update the state to include error messages for script and editor popups
+  const [scriptEditorError, setScriptEditorError] = useState(null);
+  const [editorError, setEditorError] = useState(null);
 
   // Helper to refresh registry/defaults from backend
   const refreshRegistry = () => {
@@ -159,13 +163,28 @@ const ConfigCreateForm = ({
 
   // Handlers for script editor popup
   const handleScriptEditorSave = (newCode) => {
-    console.log(`[DEBUG] Saved code for script (${scriptEditorPopup.path}):\n`, newCode);
-    setScriptEditorPopup({ open: false, code: "", path: "" });
-    refreshRegistry(); // Refresh registry after saving
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ command: "update_script", args: [scriptEditorPopup.path, newCode] }));
+    const handleResponse = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.status === "ok") {
+          // console.log(`[DEBUG] Script updated successfully: ${data.message}`);
+          setScriptEditorPopup({ open: false, code: "", path: "" });
+          setScriptEditorError(null); // Clear error on success
+          refreshRegistry(); // Refresh registry after saving
+        } else if (data.status === "error") {
+          console.error(`[ERROR] Failed to update script: ${data.message}`);
+          setScriptEditorError(data.message || "Error updating script");
+        }
+      } catch (e) {}
+      ws.removeEventListener("message", handleResponse);
+    };
+    ws.addEventListener("message", handleResponse);
   };
 
   const handleScriptEditorClose = () => {
-    console.log(`[DEBUG] Editor closed without saving. Script: ${scriptEditorPopup.path}`);
+    // console.log(`[DEBUG] Editor closed without saving. Script: ${scriptEditorPopup.path}`);
     setScriptEditorPopup({ open: false, code: "", path: "" });
   };
 
@@ -390,13 +409,28 @@ const ConfigCreateForm = ({
 
   // Handlers for MonacoCodeEditorPopup
   const handleEditorSave = (newLines) => {
-    console.log(`[DEBUG] Saved code for ${editorPopup.compName} (${editorPopup.compPath}):\n${newLines}`);
-    setEditorPopup({ open: false, code: "", compName: "", compPath: "" });
-    refreshRegistry(); // Refresh registry after saving
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ command: "update_script", args: [editorPopup.compPath, newLines] }));
+    const handleResponse = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.status === "ok") {
+          // console.log(`[DEBUG] Component script updated successfully: ${data.message}`);
+          setEditorPopup({ open: false, code: "", compName: "", compPath: "" });
+          setEditorError(null); // Clear error on success
+          refreshRegistry(); // Refresh registry after saving
+        } else if (data.status === "error") {
+          console.error(`[ERROR] Failed to update component script: ${data.message}`);
+          setEditorError(data.message || "Error updating component script");
+        }
+      } catch (e) {}
+      ws.removeEventListener("message", handleResponse);
+    };
+    ws.addEventListener("message", handleResponse);
   };
 
   const handleEditorClose = () => {
-    console.log(`[DEBUG] Editor closed without saving. Component: ${editorPopup.compName} (${editorPopup.compPath})`);
+    // console.log(`[DEBUG] Editor closed without saving. Component: ${editorPopup.compName} (${editorPopup.compPath})`);
     setEditorPopup({ open: false, code: "", compName: "", compPath: "" });
   };
 
@@ -479,67 +513,67 @@ const ConfigCreateForm = ({
   return (
     <>
       <form onSubmit={handleSubmit} className="p-3">
-      <h5>{mode === "edit" ? "(editable)" : "Create New Config"}</h5>
-      <div className="mb-3">
-        <label className="form-label">Name</label>
-        <input
-          className="form-control"
-          name="name"
-          value={form.name}
-          onChange={handleChange}
-          required
-          disabled={submitting}
-        />
-      </div>
-      {COMPONENTS.map((comp) => (
-        <ItemSelector
-          key={comp}
-          label={comp}
-          name={comp}
-          value={form[comp]}
-          options={registry[comp] || {}}
-          onChange={handleChange}
-          disabled={submitting}
-          onLinkClick={handleSelectorLinkClick}
-          onCreate={() => handleComponentCreate(comp)}
-        />
-      ))}
-      {mode === "edit" && defaults && (
-        <button
-          type="button"
-          className="btn btn-outline-secondary mb-3"
-          onClick={handleToDefaults}
-          disabled={submitting}
-        >
-          To defaults
-        </button>
-      )}
-      {error && <div className="alert alert-danger">{error}</div>}
-      {!(mode === "edit" && autoSave) && (
-        <div className="d-flex justify-content-end">
+        <h5>{mode === "edit" ? "(editable)" : "Create New Config"}</h5>
+        <div className="mb-3">
+          <label className="form-label">Name</label>
+          <input
+            className="form-control"
+            name="name"
+            value={form.name}
+            onChange={handleChange}
+            required
+            disabled={submitting}
+          />
+        </div>
+        {COMPONENTS.map((comp) => (
+          <ItemSelector
+            key={comp}
+            label={comp}
+            name={comp}
+            value={form[comp]}
+            options={registry[comp] || {}}
+            onChange={handleChange}
+            disabled={submitting}
+            onLinkClick={handleSelectorLinkClick}
+            onCreate={() => handleComponentCreate(comp)}
+          />
+        ))}
+        {mode === "edit" && defaults && (
           <button
             type="button"
-            className="btn btn-secondary me-2"
-            onClick={onClose}
+            className="btn btn-outline-secondary mb-3"
+            onClick={handleToDefaults}
             disabled={submitting}
           >
-            Cancel
+            To defaults
           </button>
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={submitting}
-          >
-            {submitting
-              ? mode === "edit"
-                ? "Saving..."
-                : "Creating..."
-              : mode === "edit"
-              ? "Save"
-              : "Create"}
-          </button>
-        </div>
-      )}
+        )}
+        {error && <div className="alert alert-danger">{error}</div>}
+        {!(mode === "edit" && autoSave) && (
+          <div className="d-flex justify-content-end">
+            <button
+              type="button"
+              className="btn btn-secondary me-2"
+              onClick={onClose}
+              disabled={submitting}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting}
+            >
+              {submitting
+                ? mode === "edit"
+                  ? "Saving..."
+                  : "Creating..."
+                : mode === "edit"
+                ? "Save"
+                : "Create"}
+            </button>
+          </div>
+        )}
       </form>
       {editorPopup.open && (
         <MonacoCodeEditorPopup
@@ -550,7 +584,7 @@ const ConfigCreateForm = ({
           title={`${editorPopup.compName}: ${stripCaretDotPrefixes(editorPopup.compPath)}`}
         />
       )}
-      {/* MonacoCodeEditorPopup for script editing from sendGetScriptAndLog */}
+      {editorError && <div className="alert alert-danger">{editorError}</div>}
       {scriptEditorPopup.open && (
         <MonacoCodeEditorPopup
           lines={scriptEditorPopup.code}
@@ -560,7 +594,7 @@ const ConfigCreateForm = ({
           title={stripCaretDotPrefixes(scriptEditorPopup.path)}
         />
       )}
-      {/* ComponentFileSelector popup for file selection/creation */}
+      {scriptEditorError && <div className="alert alert-danger">{scriptEditorError}</div>}
       {fileSelector.open && (
         <ComponentFileSelector
           open={fileSelector.open}

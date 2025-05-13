@@ -216,6 +216,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
             "update_config": self.handle_update_config,
             "list_scripts": self.handle_list_scripts,
             "create_script": self.handle_create_script,
+            "update_script": self.handle_update_script,
             "get_script": self.handle_get_script,
         }
         # Set of commands that are long-running and should be dispatched in background
@@ -486,6 +487,37 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({
             "status": "ok",
             "message": f"Script '{path}' created",
+            "script_id": script.id,
+        })
+
+    async def handle_update_script(self, args: List[Any]) -> None:
+        """Update script code and its updated_at field."""
+        if len(args) != 2:
+            await self.send_json({"status": "error",
+                                "message": "Arguments required: path, code"})
+            return
+        path, code = args
+        # Check if valid
+        pattern = r"^components(\.[a-zA-Z_][a-zA-Z0-9_]*)+$"
+        if re.match(pattern, path) is None:
+            await self.send_json({"status": "error", "message": f"Path '{path}' is not valid"})
+            return
+        script = await sync_to_async(Script.objects.filter(path=path).first)()
+        if not script:
+            await self.send_json({"status": "error", "message": f"Script '{path}' does not exist"})
+            return
+        raw = path.replace(".", "/") + ".py"
+        output_file = Path(raw)
+        output_file.parent.mkdir(exist_ok=True, parents=True)
+        with output_file.open('w', encoding="utf-8") as myfile:
+            myfile.write(code)
+
+        # Save the script to update the updated_at field automatically
+        await sync_to_async(script.save)()
+
+        await self.send_json({
+            "status": "ok",
+            "message": f"Script '{path}' updated",
             "script_id": script.id,
         })
 

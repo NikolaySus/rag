@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
 import AnsiToHtml from 'ansi-to-html';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import splitAnsiLineByVisibleLength from '../utils/splitAnsiLineByVisibleLength';
 import ConfigCreateForm from './ConfigCreateForm';
 
@@ -22,6 +22,7 @@ const ansiConverter = new AnsiToHtml({
  */
 const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, onStop, onConfigDeleted, onConfigsChanged, configs = [] }) => {
   const [config, setConfig] = useState(null);
+  const [configActive, setConfigActive] = useState(false); // Separate state for active status
   const [loading, setLoading] = useState(false);
   // Form state
   const [indexer, setIndexer] = useState('true');
@@ -43,16 +44,14 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
   // Helper to get current config's terminal state
   const getCurrentTerminal = () => terminalState[configId] || { lines: [], currentRun: null };
 
-  // Sync config.active from configs prop
+  // Sync configActive from configs prop
   useEffect(() => {
     if (!configId || !Array.isArray(configs)) return;
     const found = configs.find(c => String(c.id) === String(configId));
-    if (found && config) {
-      if (config.active !== found.active) {
-        setConfig(prev => ({ ...prev, active: found.active }));
-      }
+    if (found) {
+      setConfigActive(found.active);
     }
-  }, [configs, configId, config]); // Runs when configs, configId, or config changes
+  }, [configs, configId]);
 
   // Handle terminal output and deletion from WebSocket
   useEffect(() => {
@@ -82,8 +81,7 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
           if (String(closedId) === String(configId)) {
             setDeactivating(false);
             setDeactivateError(null);
-            // Optionally, update config.active to false
-            // setConfig(prev => prev ? { ...prev, active: false } : prev);
+            setConfigActive(false); // Update configActive to false
             if (typeof onConfigsChanged === "function") {
               onConfigsChanged();
             }
@@ -241,6 +239,7 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
         const data = JSON.parse(event.data);
         if (data.status === 'ok' && data.config && String(data.config.id) === String(configId)) {
           setConfig(data.config);
+          setConfigActive(data.config.active); // Set configActive separately
           setLoading(false);
         }
       } catch (e) {}
@@ -275,7 +274,7 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
 
   // Deactivate config logic
   const handleDeactivate = () => {
-    if (!ws || !configId || deactivating || (config && config.active === false)) return;
+    if (!ws || !configId || deactivating || !configActive) return;
     setDeactivateError(null);
     setDeactivating(true);
 
@@ -355,8 +354,8 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
           <button
             className="btn btn-outline-secondary btn-sm me-2"
             onClick={handleDeactivate}
-            disabled={deactivating || config.active === false}
-            title={config.active === false ? "Already deactivated" : "Deactivate this config"}
+            disabled={deactivating || !configActive}
+            title={!configActive ? "Already deactivated" : "Deactivate this config"}
           >
             {deactivating ? "Deactivating..." : "Deactivate"}
           </button>

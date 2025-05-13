@@ -32,7 +32,7 @@ class Config(models.Model):
 
 class Calculation(models.Model):
     """Calculation model"""
-    config = models.ForeignKey(Config, on_delete=models.CASCADE, default=0, related_name='calculations')
+    config = models.ForeignKey(Config, on_delete=models.CASCADE, related_name='calculations')
     status = models.CharField(max_length=7, choices=STATUS_CHOICES, default='running')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -49,3 +49,5 @@ class Script(models.Model):
     """Script model"""
     path = models.CharField(max_length=255, unique=True)
     hidden = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
