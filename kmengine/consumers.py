@@ -1,6 +1,7 @@
 """All magic goes here"""
 
 import re
+import sys
 import json
 import asyncio
 import importlib
@@ -165,7 +166,7 @@ exec_task(fn_dict, {indexer}, {larg})
             }
         except Config.DoesNotExist:
             return {}
-            
+
     @staticmethod
     def update_config(config_id: int, new_name: str, new_content: str) -> str:
         """Update a config's name and content by id"""
@@ -247,22 +248,33 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         # Compose the code to also set the hidden list after REGISTRY import
         import_lines += f"\nREGISTRY['hidden'] = {hidden_paths!r}\n"
 
+        # Remove all relevant modules from sys.modules to force re-import
+        for script in all_scripts:
+            module_name = script["path"]
+            if module_name in sys.modules:
+                del sys.modules[module_name]
+        if 'utils.registry' in sys.modules:
+            del sys.modules['utils.registry']
+
         # Call reload_string_modules with the generated import string
         reload_string_modules({"in_memory_module": import_lines})
 
     def update_registry(self):
         """Update dict of options"""
         self.reload_registry()
-        #self.regm = importlib.reload(self.regm)
+        # if 'in_memory_module' in sys.modules:
+        #     del sys.modules['in_memory_module']
         self.regm = importlib.__import__('in_memory_module', fromlist=['REGISTRY'])
         self.registry = self.regm.REGISTRY
+        # print(self.registry)
 
     async def connect(self) -> None:
         """for client on client connect"""
         # Safely reload registry with DB access
-        await sync_to_async(self.reload_registry)()
-        self.regm = importlib.__import__('in_memory_module', fromlist=['REGISTRY'])
-        self.registry = self.regm.REGISTRY
+        # await sync_to_async(self.reload_registry)()
+        # self.regm = importlib.__import__('in_memory_module', fromlist=['REGISTRY'])
+        # self.registry = self.regm.REGISTRY
+        await sync_to_async(self.update_registry)()
         await self.accept()
         await self.send_json({"status": "connected",
                               "output": self.cli.help()})
@@ -279,6 +291,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
                                       "message": "No data received"})
                 return
 
+            print(content)
             command = content.get("command")
             args = content.get("args", [])
 

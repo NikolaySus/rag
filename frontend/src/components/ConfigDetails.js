@@ -40,6 +40,9 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
   // Terminal output state per config
   const [terminalState, setTerminalState] = useState({});
   const terminalRef = useRef(null);
+  
+  // State to control remounting of ConfigCreateForm
+  const [showConfigForm, setShowConfigForm] = useState(true);
 
   // Helper to get current config's terminal state
   const getCurrentTerminal = () => terminalState[configId] || { lines: [], currentRun: null };
@@ -206,6 +209,12 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
         };
       });
       const content = JSON.stringify(configJson, null, 2);
+      // Update the local config state with the new content
+      setConfig((prevConfig) => ({
+        ...prevConfig,
+        name: form.name,
+        content: content,
+      }));
       const message = {
         command: "update_config",
         args: [
@@ -215,9 +224,25 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
         ],
       };
       ws.send(JSON.stringify(message));
+      setShowConfigForm(false);
+      const timer = setTimeout(() => {
+        setShowConfigForm(true);
+      }, 1);
     },
     [ws, config]
   );
+
+  // useEffect(() => {
+  //   console.log('Config updated:', config);
+    
+  //   // Toggle the state to remount ConfigCreateForm when config changes
+  //   setShowConfigForm(false);
+  //   const timer = setTimeout(() => {
+  //     setShowConfigForm(true);
+  //   }, 10);
+    
+  //   return () => clearTimeout(timer);
+  // }, [config]);
 
   // Fetch config details
   useEffect(() => {
@@ -402,14 +427,16 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
           </div>
         </div>
       )}
-      <ConfigCreateForm
-        ws={ws}
-        mode="edit"
-        config={config}
-        autoSave
-        onAutoSave={handleAutoSave}
-        onConfigsChanged={onConfigsChanged} // Pass down
-      />
+      {showConfigForm && (
+        <ConfigCreateForm
+          ws={ws}
+          mode="edit"
+          config={config}
+          autoSave
+          onAutoSave={handleAutoSave}
+          onConfigsChanged={onConfigsChanged} // Pass down
+        />
+      )}
       <hr />
       <form className="mb-3" onSubmit={handleRun}>
         <div className="row align-items-end">

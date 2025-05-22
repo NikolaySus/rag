@@ -13,3 +13,10 @@ def windef_indexer(path: str) -> bool:
     for _ in tqdm(range(10)):
         time.sleep(0.05)
     return True
+
+@register("indexer")
+def windef_indexer2(path: str) -> bool:
+    """My indexer"""
+    for _ in tqdm(range(10)):
+        time.sleep(0.05)
+    return True

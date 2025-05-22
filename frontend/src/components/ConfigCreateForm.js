@@ -49,7 +49,6 @@ const ConfigCreateForm = ({
   const [defaults, setDefaults] = useState({});
   const [form, setForm] = useState({
     name: "",
-    content: "",
     indexer: "",
     retriever: "",
     augmenter: "",
@@ -152,7 +151,6 @@ const ConfigCreateForm = ({
             });
           }
         } else if (data.status === "error") {
-          // eslint-disable-next-line no-console
           console.log("[ERROR] get_script response:", data);
         }
       } catch (e) {}
@@ -170,6 +168,9 @@ const ConfigCreateForm = ({
         const data = JSON.parse(event.data);
         if (data.status === "ok") {
           // console.log(`[DEBUG] Script updated successfully: ${data.message}`);
+          // if (typeof onAutoSave === "function") {
+          //   onAutoSave(form);
+          // }
           setScriptEditorPopup({ open: false, code: "", path: "" });
           setScriptEditorError(null); // Clear error on success
           refreshRegistry(); // Refresh registry after saving
@@ -289,7 +290,6 @@ const ConfigCreateForm = ({
               return {
                 ...prev,
                 name: currentConfig.name,
-                content: currentConfig.content,
                 ...Object.fromEntries(
                   COMPONENTS.map((c) => [c, parsed[c]?.path || ""])
                 ),
@@ -333,7 +333,6 @@ const ConfigCreateForm = ({
       setForm((prev) => ({
         ...prev,
         name: config.name,
-        content: config.content,
         ...Object.fromEntries(
           COMPONENTS.map((c) => [c, parsed[c]?.path || ""])
         ),
@@ -416,6 +415,9 @@ const ConfigCreateForm = ({
         const data = JSON.parse(event.data);
         if (data.status === "ok") {
           // console.log(`[DEBUG] Component script updated successfully: ${data.message}`);
+          // if (typeof onAutoSave === "function") {
+          //   onAutoSave(form);
+          // }
           setEditorPopup({ open: false, code: "", compName: "", compPath: "" });
           setEditorError(null); // Clear error on success
           refreshRegistry(); // Refresh registry after saving
@@ -502,13 +504,13 @@ const ConfigCreateForm = ({
     }
   };
 
-  if (loading) {
-    return (
-      <div className="p-3">
-        <div className="text-secondary">Loading form...</div>
-      </div>
-    );
-  }
+  // if (loading) {
+  //   return (
+  //     <div className="p-3">
+  //       <div className="text-secondary">Loading form...</div>
+  //     </div>
+  //   );
+  // }
 
   return (
     <>
