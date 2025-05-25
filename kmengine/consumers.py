@@ -76,11 +76,11 @@ class KernelCLI:
         code = f"""
 code = {content_}
 fn_dict = {{k: get_fn(v['path']) for k, v in code.items()}}
-exec_task(fn_dict, {indexer}, {larg})
+await exec_task(fn_dict, {indexer}, {larg})
 """
         # For new kernels, we need to do initial imports
         if need_init:
-            code = "import utils.tqdm_global_config\nfrom utils.fnuser import get_fn, exec_task" + code
+            code = "import nest_asyncio\nimport utils.tqdm_global_config\nfrom utils.fnuser import get_fn, exec_task\nnest_asyncio.apply()" + code
             on_output("Done some initial imports.\n")
 
         ret = "ok"
@@ -91,7 +91,7 @@ exec_task(fn_dict, {indexer}, {larg})
 
         msg_id = client.execute(code)
         while True:
-            msg = client.get_iopub_msg(timeout=5)
+            msg = client.get_iopub_msg(timeout=-1)
             if msg["parent_header"].get("msg_id") == msg_id:
                 msg_type = msg["msg_type"]
                 content = msg["content"]

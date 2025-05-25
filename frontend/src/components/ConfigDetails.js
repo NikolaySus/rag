@@ -122,10 +122,16 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
                   lines.pop();
                 }
               } else {
-                // Split output by newlines, then split each line by length and append
+                // Check if the last line ends with a newline character
+                const lastLineEndsWithNewline = lines.length > 0 && lines[lines.length - 1].endsWith('\n');
                 const splitLines = output.split('\n');
                 splitLines.forEach((line, idx) => {
-                  splitAnsiLineByVisibleLength(line).forEach(chunk => lines.push(chunk));
+                  if (idx === 0 && lines.length > 0 && !lastLineEndsWithNewline) {
+                    // Append to the last line if it doesn't end with a newline
+                    lines[lines.length - 1] += line;
+                  } else {
+                    splitAnsiLineByVisibleLength(line).forEach(chunk => lines.push(chunk));
+                  }
                 });
               }
               // Limit terminal buffer size (optional)

@@ -3,13 +3,15 @@
 import importlib.util
 
 
-def exec_task(fn_dict: dict, indexer: bool, **kwargs):
+async def exec_task(fn_dict: dict, indexer: bool, **kwargs):
     """code execution"""
     if indexer:
-        fn_dict["indexer"](kwargs.get("path", None))
+        result = await fn_dict["indexer"](kwargs.get("path", None))
     else:
         query = kwargs.get("query", None)
-        fn_dict["generator"](fn_dict["augmenter"](query, fn_dict["retriever"](query)))
+        retreived = await fn_dict["retriever"](query)
+        augmented = await fn_dict["augmenter"](query, retreived)
+        generated = await fn_dict["generator"](query, augmented)
 
 def get_fn(path: str):
     """dynamic function import like from 'module.next.some_function' string"""

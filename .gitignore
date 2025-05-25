@@ -175,3 +175,7 @@ cython_debug/
 
 # db
 db.sqlite3
+
+# test
+chromadb/
+qdrant/
