@@ -226,8 +226,8 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
     def gen_default(self):
         """Generate default config from first options in registry"""
         return {
-            k: {"path": next(iter(self.registry[k])), "settings": dict()} for k in self.registry if k != "hidden"
-        }
+            k: {"path": next(iter(self.registry[k]))} for k in self.registry if k != "hidden"
+        } # , "settings": dict()
 
     def reload_registry(self):
         """
@@ -455,6 +455,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         #     await self.send_json({"status": "error",
         #                           "message": "new_content must be valid JSON"})
         #     return
+        print(new_content)
         msg = await sync_to_async(self.cli.update_config)(config_id, new_name, new_content)
         await self.send_json({"status": "ok",
                               "updated_id": config_id,

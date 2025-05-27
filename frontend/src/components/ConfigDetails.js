@@ -20,7 +20,7 @@ const ansiConverter = new AnsiToHtml({
  *   }
  * }
  */
-const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, onStop, onConfigDeleted, onConfigsChanged, configs = [] }) => {
+const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, onStop, onConfigDeleted, onConfigsChanged, configs = [] }) => {  
   const [config, setConfig] = useState(null);
   const [configActive, setConfigActive] = useState(false); // Separate state for active status
   const [loading, setLoading] = useState(false);
@@ -43,6 +43,9 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
   
   // State to control remounting of ConfigCreateForm
   const [showConfigForm, setShowConfigForm] = useState(true);
+  
+  // Add registry state to pass to ConfigCreateForm and use in handleAutoSave
+  const [registry, setRegistry] = useState({});
 
   // Helper to get current config's terminal state
   const getCurrentTerminal = () => terminalState[configId] || { lines: [], currentRun: null };
@@ -201,20 +204,27 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
     }
   }, [configId, terminalState]);
 
+  // Helper to build config JSON with settings from form
+  const buildContentWithSettings = useCallback((form) => {
+    const COMPONENTS = ["indexer", "retriever", "augmenter", "generator"];
+    const configJson = {};
+    COMPONENTS.forEach((c) => {
+      const path = form[c]?.path || "";
+      // In edit mode, always use settings from form state
+      const settings = form[c]?.settings || {};
+      configJson[c] = {
+        path,
+        settings,
+      };
+    });
+    return JSON.stringify(configJson, null, 2);
+  }, []);
+
   // Auto-save handler for ConfigCreateForm
   const handleAutoSave = useCallback(
     (form) => {
       if (!ws || !config) return;
-      // Build content from selectors
-      const COMPONENTS = ["indexer", "retriever", "augmenter", "generator"];
-      const configJson = {};
-      COMPONENTS.forEach((c) => {
-        configJson[c] = {
-          path: form[c],
-          settings: {}, // settings ignored for now
-        };
-      });
-      const content = JSON.stringify(configJson, null, 2);
+      const content = buildContentWithSettings(form);
       // Update the local config state with the new content
       setConfig((prevConfig) => ({
         ...prevConfig,
@@ -235,7 +245,7 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
         setShowConfigForm(true);
       }, 1);
     },
-    [ws, config]
+    [ws, config, registry, buildContentWithSettings]
   );
 
   // useEffect(() => {
@@ -249,6 +259,22 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
     
   //   return () => clearTimeout(timer);
   // }, [config]);
+
+  // Fetch registry when configId changes (or on mount)
+  useEffect(() => {
+    if (!ws || !configId) return;
+    ws.send(JSON.stringify({ command: "config_creation_info", args: [] }));
+    const handleMessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.status === "ok" && data.registry) {
+          setRegistry(data.registry);
+        }
+      } catch (e) {}
+    };
+    ws.addEventListener("message", handleMessage);
+    return () => ws.removeEventListener("message", handleMessage);
+  }, [ws, configId]);
 
   // Fetch config details
   useEffect(() => {

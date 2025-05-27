@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import ConfigList from './ConfigList';
-import ConfigDetails from './ConfigDetails';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
+import ConfigDetails from './ConfigDetails';
+import ConfigList from './ConfigList';
 
 const App = () => {
   const [loaded, setLoaded] = useState(false);

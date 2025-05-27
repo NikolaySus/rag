@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import ComponentFileSelector from "./ComponentFileSelector"; // Import the file selector popup
 import ItemSelector from "./ItemSelector"; // Import the generic selector
 import MonacoCodeEditorPopup from "./MonacoCodeEditorPopup";
+import SettingsField from "./SettingsField";
 
 const COMPONENTS = ["indexer", "retriever", "augmenter", "generator"];
 
@@ -13,13 +14,39 @@ const parseContent = (content) => {
   }
 };
 
-const buildContent = (form) => {
-  // Build config JSON from component selectors
+/**
+ * Build config JSON from form state.
+ * - In "create" mode: settings are taken from form state if present, otherwise from registry.
+ * - In "edit" mode: settings are always taken from form state (which is initialized from config content).
+ */
+const buildContent = (form, registry, mode) => {
   const configJson = {};
   COMPONENTS.forEach((c) => {
+    const path = form[c]?.path || "";
+    let settings;
+    if (mode === "edit") {
+      // Always use settings from form state in edit mode
+      settings = form[c]?.settings || {};
+    } else {
+      // In create mode, use form state if present, otherwise registry
+      settings = form[c]?.settings;
+      if (settings === undefined) {
+        if (
+          registry &&
+          registry[c] &&
+          registry[c][path] &&
+          Array.isArray(registry[c][path]) &&
+          registry[c][path].length > 2
+        ) {
+          settings = registry[c][path][2] || {};
+        } else {
+          settings = {};
+        }
+      }
+    }
     configJson[c] = {
-      path: form[c],
-      settings: {}, // settings ignored for now
+      path,
+      settings,
     };
   });
   return JSON.stringify(configJson, null, 2);
@@ -49,10 +76,10 @@ const ConfigCreateForm = ({
   const [defaults, setDefaults] = useState({});
   const [form, setForm] = useState({
     name: "",
-    indexer: "",
-    retriever: "",
-    augmenter: "",
-    generator: "",
+    indexer: { path: "" },
+    retriever: { path: "" },
+    augmenter: { path: "" },
+    generator: { path: "" },
   });
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -259,10 +286,11 @@ const ConfigCreateForm = ({
 
   const didSend = useRef(false);
 
-  // Only run on mount or when mode/ws changes
+  // Only run on mount
   useEffect(() => {
     if (!ws) return;
     if (mode !== "create" && mode !== "edit") return;
+    console.log("[DEBUG] useEffect 1");
     
     // Store current config reference to use inside effect
     const currentConfig = mode === "edit" ? config : null;
@@ -280,29 +308,26 @@ const ConfigCreateForm = ({
         if (data.status === "ok" && data.registry && data.default_config) {
           setRegistry(data.registry);
           setDefaults(data.default_config);
-          // For create: set defaults; for edit: ignore defaults, use config values
-          setForm((prev) => {
-            if (mode === "edit" && currentConfig) {
-              // Parse content JSON to get component paths
-              const parsed = parseContent(currentConfig.content);
-              // Set skipNextAutoSaveRef to true before setting form
-              skipNextAutoSaveRef.current = true;
-              return {
-                ...prev,
-                name: currentConfig.name,
-                ...Object.fromEntries(
-                  COMPONENTS.map((c) => [c, parsed[c]?.path || ""])
-                ),
-              };
-            } else {
-              return {
-                ...prev,
-                ...Object.fromEntries(
-                  COMPONENTS.map((c) => [c, data.default_config[c]?.path || ""])
-                ),
-              };
-            }
-          });
+          
+          // For edit mode: set form values from config
+          if (mode === "edit" && currentConfig) {
+            // Parse content JSON to get component paths and settings
+            const parsed = parseContent(currentConfig.content);
+            // Set skipNextAutoSaveRef to true before setting form
+            skipNextAutoSaveRef.current = true;
+            setForm((prev) => ({
+              ...prev,
+              name: currentConfig.name,
+              ...Object.fromEntries(
+                COMPONENTS.map((c) => {
+                  const path = parsed[c]?.path || "";
+                  const settings = parsed[c]?.settings || {};
+                  return [c, { path, settings }];
+                })
+              ),
+            }));
+          }
+          // Note: Create mode initialization moved to separate effect
         }
         setLoading(false);
       } catch (e) {
@@ -321,35 +346,73 @@ const ConfigCreateForm = ({
       }
       ws.removeEventListener("message", handleMessage);
     };
-    // Only depend on ws and mode, not config
-  }, [ws, mode]);
+  }, []);
 
   // If config prop changes in edit mode, update form
+  // useEffect(() => {
+  //   if (mode === "edit" && config) {
+  //     console.log("[DEBUG] useEffect 2");
+  //     const parsed = parseContent(config.content);
+  //     // Set skipNextAutoSaveRef to true before setting form
+  //     skipNextAutoSaveRef.current = true;
+  //     setForm((prev) => ({
+  //       ...prev,
+  //       name: config.name,
+  //       ...Object.fromEntries(
+  //         COMPONENTS.map((c) => {
+  //           const path = parsed[c]?.path || "";
+  //           const settings = parsed[c]?.settings || {};
+  //           return [c, { path, settings }];
+  //         })
+  //       ),
+  //     }));
+  //   }
+  // }, [config]);
+  
+  // NEW EFFECT: Initialize form state for CREATE mode after registry/defaults are loaded
   useEffect(() => {
-    if (mode === "edit" && config) {
-      const parsed = parseContent(config.content);
-      // Set skipNextAutoSaveRef to true before setting form
-      skipNextAutoSaveRef.current = true;
+    if (
+      mode === "create" &&
+      registry &&
+      Object.keys(registry).length > 0 &&
+      defaults &&
+      Object.keys(defaults).length > 0
+    ) {
+      console.log("[DEBUG] useEffect 3");
       setForm((prev) => ({
         ...prev,
-        name: config.name,
         ...Object.fromEntries(
-          COMPONENTS.map((c) => [c, parsed[c]?.path || ""])
+          COMPONENTS.map((c) => {
+            const path = defaults[c]?.path || "";
+            // Get default settings from registry
+            let settings = {};
+            if (
+              registry &&
+              registry[c] &&
+              registry[c][path] &&
+              Array.isArray(registry[c][path]) &&
+              registry[c][path].length > 2
+            ) {
+              settings = registry[c][path][2] || {};
+            }
+            return [c, { path, settings }];
+          })
         ),
       }));
     }
-  }, [mode, config]);
+  }, [registry, defaults]);
 
   // Open script editor when componentContent is set
   useEffect(() => {
     if (mode === "edit" && config && componentContent) {
+      console.log("[DEBUG] useEffect 4");
       const [compName, compPath] = componentContent;
       if (compName && compPath) {
         openScriptEditorPopup(compPath.slice(0, compPath.lastIndexOf(".")));
       }
       setComponentContent(null); // Reset trigger
     }
-  }, [componentContent, mode, config, ws]);
+  }, [componentContent, config]);
 
   // Instant auto-save on every change in edit+autoSave mode, but not on initial load
   useEffect(() => {
@@ -358,39 +421,64 @@ const ConfigCreateForm = ({
       autoSave &&
       typeof ws !== "undefined" &&
       config &&
-      (form.name || form.indexer || form.retriever || form.augmenter || form.generator)
+      (form.name || form.indexer?.path || form.retriever?.path || form.augmenter?.path || form.generator?.path)
     ) {
+      console.log("[DEBUG] useEffect 5");
       if (skipNextAutoSaveRef.current) {
         // Skip this auto-save, reset the flag
         skipNextAutoSaveRef.current = false;
         return;
       }
       
-      // Build content from selectors
-      const content = buildContent(form);
-      const message = {
-        command: "update_config",
-        args: [
-          config.id,
-          form.name,
-          content,
-        ],
-      };
-      ws.send(JSON.stringify(message));
+      // Only notify parent via onAutoSave, don't send update_config here
       if (typeof onAutoSave === "function") {
-        onAutoSave(form);
+        onAutoSave(form); // Always sends the latest form value
       }
       if (typeof onConfigsChanged === "function") {
         onConfigsChanged();
       }
     }
-  }, [form.name, form.indexer, form.retriever, form.augmenter, form.generator, mode, autoSave, ws, config]);
+  }, [form]);
 
   const handleChange = (e) => {
     // Always reset skipNextAutoSaveRef so user changes are never skipped
     skipNextAutoSaveRef.current = false;
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    
+    // When changing path, also update settings to the new default from registry
+    let newSettings = {};
+    if (
+      registry &&
+      registry[name] &&
+      registry[name][value] &&
+      Array.isArray(registry[name][value]) &&
+      registry[name][value].length > 2
+    ) {
+      newSettings = registry[name][value][2] || {};
+    }
+    
+    setForm((prev) => ({
+      ...prev,
+      [name]: { 
+        path: value,
+        settings: newSettings
+      }
+    }));
+  };
+  
+  // Handler for settings change
+  const handleSettingsChange = (comp, key, value) => {
+    skipNextAutoSaveRef.current = false;
+    setForm((prev) => ({
+      ...prev,
+      [comp]: {
+        ...prev[comp],
+        settings: {
+          ...prev[comp].settings,
+          [key]: value
+        }
+      }
+    }));
   };
 
   // "To defaults" button for edit mode
@@ -400,7 +488,21 @@ const ConfigCreateForm = ({
         ...prev,
         // keep name as is
         ...Object.fromEntries(
-          COMPONENTS.map((c) => [c, defaults[c]?.path || ""])
+          COMPONENTS.map((c) => {
+            const path = defaults[c]?.path || "";
+            // Get default settings from registry
+            let settings = {};
+            if (
+              registry &&
+              registry[c] &&
+              registry[c][path] &&
+              Array.isArray(registry[c][path]) &&
+              registry[c][path].length > 2
+            ) {
+              settings = registry[c][path][2] || {};
+            }
+            return [c, { path, settings }];
+          })
         ),
       }));
     }
@@ -441,21 +543,16 @@ const ConfigCreateForm = ({
     setError(null);
     setSubmitting(true);
 
+    // Build config JSON from component selectors
+    const content = buildContent(form, registry, mode);
+
     if (mode === "create") {
-      // Build config JSON from component selectors
-      const configJson = {};
-      COMPONENTS.forEach((c) => {
-        configJson[c] = {
-          path: form[c],
-          settings: {}, // settings ignored for now
-        };
-      });
       const message = {
         command: "config",
         args: [
           form.name,
           "calculation",
-          JSON.stringify(configJson),
+          content,
         ],
       };
       const handleResponse = (event) => {
@@ -475,42 +572,13 @@ const ConfigCreateForm = ({
       ws.addEventListener("message", handleResponse);
       ws.send(JSON.stringify(message));
     } else if (mode === "edit" && config) {
-      // Build content from selectors
-      const content = buildContent(form);
-      const message = {
-        command: "update_config",
-        args: [
-          config.id,
-          form.name,
-          content,
-        ],
-      };
-      const handleResponse = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.status === "ok" && data.updated_id === config.id) {
-            ws.removeEventListener("message", handleResponse);
-            setSubmitting(false);
-            onUpdated && onUpdated();
-            onClose && onClose();
-          } else if (data.status === "error") {
-            setError(data.message || "Error updating config");
-            setSubmitting(false);
-          }
-        } catch (e) {}
-      };
-      ws.addEventListener("message", handleResponse);
-      ws.send(JSON.stringify(message));
+      // In edit mode, just call onUpdated/onClose if provided
+      // Do NOT send update_config here - parent component is responsible for that
+      setSubmitting(false);
+      onUpdated && onUpdated();
+      onClose && onClose();
     }
   };
-
-  // if (loading) {
-  //   return (
-  //     <div className="p-3">
-  //       <div className="text-secondary">Loading form...</div>
-  //     </div>
-  //   );
-  // }
 
   return (
     <>
@@ -522,23 +590,29 @@ const ConfigCreateForm = ({
             className="form-control"
             name="name"
             value={form.name}
-            onChange={handleChange}
+            onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))}
             required
             disabled={submitting}
           />
         </div>
         {COMPONENTS.map((comp) => (
-          <ItemSelector
-            key={comp}
-            label={comp}
-            name={comp}
-            value={form[comp]}
-            options={registry[comp] || {}}
-            onChange={handleChange}
-            disabled={submitting}
-            onLinkClick={handleSelectorLinkClick}
-            onCreate={() => handleComponentCreate(comp)}
-          />
+          <div key={comp}>
+            <ItemSelector
+              label={comp}
+              name={comp}
+              value={form[comp]?.path || ""}
+              options={registry[comp] || {}}
+              onChange={handleChange}
+              disabled={submitting}
+              onLinkClick={handleSelectorLinkClick}
+              onCreate={() => handleComponentCreate(comp)}
+            />
+            <SettingsField
+              settings={form[comp]?.settings || {}}
+              onChange={(key, value) => handleSettingsChange(comp, key, value)}
+              disabled={submitting}
+            />
+          </div>
         ))}
         {mode === "edit" && defaults && (
           <button
