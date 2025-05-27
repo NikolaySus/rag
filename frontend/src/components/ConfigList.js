@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ConfigCreateForm from './ConfigCreateForm';
 
 const ConfigList = ({ ws, selectedId, onSelect, runningConfigIds = [], reloadKey, onConfigsLoaded }) => {
   const [configs, setConfigs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // Ref to keep track of previous config ids
+  const prevConfigIdsRef = useRef([]);
 
   // Fetch configs
   const fetchConfigs = React.useCallback(() => {
@@ -23,11 +26,22 @@ const ConfigList = ({ ws, selectedId, onSelect, runningConfigIds = [], reloadKey
       try {
         const data = JSON.parse(event.data);
         if (data.status === 'ok' && Array.isArray(data.configs)) {
+          // Detect new config IDs
+          const newConfigIds = data.configs.map(cfg => cfg.id);
+          const prevConfigIds = prevConfigIdsRef.current;
+          // Find ids that are in newConfigIds but not in prevConfigIds
+          const addedIds = newConfigIds.filter(id => !prevConfigIds.includes(id));
           setConfigs(data.configs);
           setLoading(false);
           if (typeof onConfigsLoaded === "function") {
             onConfigsLoaded(data.configs);
           }
+          // If a new config was added, select it
+          if (addedIds.length > 0 && typeof onSelect === "function") {
+            onSelect(addedIds[0]);
+          }
+          // Update the ref for next time
+          prevConfigIdsRef.current = newConfigIds;
         }
       } catch (e) {}
     };
@@ -49,10 +63,11 @@ const ConfigList = ({ ws, selectedId, onSelect, runningConfigIds = [], reloadKey
   }, [ws]);
 
   useEffect(() => {
+    // On mount, initialize prevConfigIdsRef
+    prevConfigIdsRef.current = configs.map(cfg => cfg.id);
     const cleanup = fetchConfigs();
     return cleanup;
   }, [fetchConfigs, reloadKey]);
-
 
   // Modal backdrop and dialog
   const Modal = ({ children, onClose }) => (
@@ -82,9 +97,9 @@ const ConfigList = ({ ws, selectedId, onSelect, runningConfigIds = [], reloadKey
 
   return (
     <div className="p-3">
-      <h3 className="mb-4">Configs</h3>
+      <h3 className="mb-4">RAG Конвейеры</h3>
       {loading ? (
-        <div className="text-secondary">Loading...</div>
+        <div className="text-secondary">Загрузка...</div>
       ) : (
         <>
           <ul className="list-group">
@@ -110,8 +125,8 @@ const ConfigList = ({ ws, selectedId, onSelect, runningConfigIds = [], reloadKey
                     <span className="badge bg-secondary me-2">id: {cfg.id}</span>
                   </span>
                 </div>
-                <div className="text-muted small mt-1">Created: {cfg.created_at}</div>
-                <div className="text-muted small">Updated: {cfg.updated_at}</div>
+                <div className="text-muted small mt-1">Создан: {cfg.created_at}</div>
+                <div className="text-muted small">Изменён: {cfg.updated_at}</div>
               </li>
             );
           })}
@@ -119,9 +134,9 @@ const ConfigList = ({ ws, selectedId, onSelect, runningConfigIds = [], reloadKey
           <div className="d-flex justify-content-end mt-4">
             <button
               className="btn btn-primary"
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => { setShowCreateModal(true); onSelect(null); }}
             >
-              + Create Config
+              + Создать новый
             </button>
           </div>
         </>

@@ -61,6 +61,6 @@ async def ollama_chat_completion(ollama_host: str, model: str, messages, tempera
 
 async def ollama_embed(ollama_host: str, ollama_timeout, ollama_embedding_model: str, texts: List[str]):
     """Async embedding example"""
-    return ollama.AsyncClient(host=ollama_host,
-                              timeout=ollama_timeout).embed(model=ollama_embedding_model,
-                                                            input=texts)
+    return await ollama.AsyncClient(
+        host=ollama_host, timeout=ollama_timeout).embed(
+            model=ollama_embedding_model, input=texts)

@@ -6,7 +6,7 @@ import ConfigList from './ConfigList';
 
 const App = () => {
   const [loaded, setLoaded] = useState(false);
-  const [placeholder, setPlaceholder] = useState("Loading");
+  const [placeholder, setPlaceholder] = useState("Загрузка");
   const [selectedConfigId, setSelectedConfigId] = useState(null);
   const [runningConfigIds, setRunningConfigIds] = useState([]);
   const [runStatusMap, setRunStatusMap] = useState({}); // { [configId]: { status, runNumber } }
@@ -33,15 +33,15 @@ const App = () => {
 
     ws.onopen = () => {
       setLoaded(true);
-      setPlaceholder("Connected");
+      setPlaceholder("Подключён");
     };
 
     ws.onerror = () => {
-      setPlaceholder("WebSocket error");
+      setPlaceholder("WebSocket сломался");
     };
 
     ws.onclose = () => {
-      setPlaceholder("WebSocket closed");
+      setPlaceholder("WebSocket закрылся");
     };
 
     // Central message handler for all run statuses
@@ -116,7 +116,11 @@ const App = () => {
   return (
     <div className="container-fluid vh-100">
       <div className="row h-100">
-        <div className="col-12 col-md-3 col-lg-2 p-0 border-end bg-light">
+        <div className="col-12 col-md-3 col-lg-2 p-0 border-end bg-light" style={{
+            maxHeight: '100vh',
+            overflowY: 'auto',
+            padding: '0 8px',
+          }}>
           <ConfigList
             ws={ws}
             selectedId={selectedConfigId}
@@ -126,10 +130,14 @@ const App = () => {
             onConfigsLoaded={handleConfigsLoaded} // New: pass handler
           />
         </div>
-        <div className="col p-4">
+        <div className="col p-4" style={{
+            maxHeight: '100vh',
+            overflowY: 'auto',
+            padding: '0 8px',
+          }}>
           <div className="mb-2">
             <span className={`badge ${loaded ? 'bg-success' : 'bg-secondary'}`}>
-              {loaded ? "Connected" : placeholder}
+              {loaded ? "Подключён" : placeholder}
             </span>
           </div>
           <ConfigDetails

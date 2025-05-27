@@ -1,5 +1,5 @@
 import AnsiToHtml from 'ansi-to-html';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import splitAnsiLineByVisibleLength from '../utils/splitAnsiLineByVisibleLength';
 import ConfigCreateForm from './ConfigCreateForm';
 
@@ -21,7 +21,6 @@ const ansiConverter = new AnsiToHtml({
  * }
  */
 const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, onStop, onConfigDeleted, onConfigsChanged, configs = [] }) => {  
-  const [config, setConfig] = useState(null);
   const [configActive, setConfigActive] = useState(false); // Separate state for active status
   const [loading, setLoading] = useState(false);
   // Form state
@@ -40,12 +39,6 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
   // Terminal output state per config
   const [terminalState, setTerminalState] = useState({});
   const terminalRef = useRef(null);
-  
-  // State to control remounting of ConfigCreateForm
-  const [showConfigForm, setShowConfigForm] = useState(true);
-  
-  // Add registry state to pass to ConfigCreateForm and use in handleAutoSave
-  const [registry, setRegistry] = useState({});
 
   // Helper to get current config's terminal state
   const getCurrentTerminal = () => terminalState[configId] || { lines: [], currentRun: null };
@@ -56,6 +49,7 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
     const found = configs.find(c => String(c.id) === String(configId));
     if (found) {
       setConfigActive(found.active);
+      setLoading(false);
     }
   }, [configs, configId]);
 
@@ -204,119 +198,6 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
     }
   }, [configId, terminalState]);
 
-  // Helper to build config JSON with settings from form
-  const buildContentWithSettings = useCallback((form) => {
-    const COMPONENTS = ["indexer", "retriever", "augmenter", "generator"];
-    const configJson = {};
-    COMPONENTS.forEach((c) => {
-      const path = form[c]?.path || "";
-      // In edit mode, always use settings from form state
-      const settings = form[c]?.settings || {};
-      configJson[c] = {
-        path,
-        settings,
-      };
-    });
-    return JSON.stringify(configJson, null, 2);
-  }, []);
-
-  // Auto-save handler for ConfigCreateForm
-  const handleAutoSave = useCallback(
-    (form) => {
-      if (!ws || !config) return;
-      const content = buildContentWithSettings(form);
-      // Update the local config state with the new content
-      setConfig((prevConfig) => ({
-        ...prevConfig,
-        name: form.name,
-        content: content,
-      }));
-      const message = {
-        command: "update_config",
-        args: [
-          config.id,
-          form.name,
-          content,
-        ],
-      };
-      ws.send(JSON.stringify(message));
-      setShowConfigForm(false);
-      const timer = setTimeout(() => {
-        setShowConfigForm(true);
-      }, 1);
-    },
-    [ws, config, registry, buildContentWithSettings]
-  );
-
-  // useEffect(() => {
-  //   console.log('Config updated:', config);
-    
-  //   // Toggle the state to remount ConfigCreateForm when config changes
-  //   setShowConfigForm(false);
-  //   const timer = setTimeout(() => {
-  //     setShowConfigForm(true);
-  //   }, 10);
-    
-  //   return () => clearTimeout(timer);
-  // }, [config]);
-
-  // Fetch registry when configId changes (or on mount)
-  useEffect(() => {
-    if (!ws || !configId) return;
-    ws.send(JSON.stringify({ command: "config_creation_info", args: [] }));
-    const handleMessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.status === "ok" && data.registry) {
-          setRegistry(data.registry);
-        }
-      } catch (e) {}
-    };
-    ws.addEventListener("message", handleMessage);
-    return () => ws.removeEventListener("message", handleMessage);
-  }, [ws, configId]);
-
-  // Fetch config details
-  useEffect(() => {
-    if (!ws || !configId) {
-      setConfig(null);
-      return;
-    }
-
-    setLoading(true);
-
-    const sendGetConfig = () => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ command: "get_config", args: [String(configId)] }));
-      }
-    };
-
-    const handleMessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.status === 'ok' && data.config && String(data.config.id) === String(configId)) {
-          setConfig(data.config);
-          setConfigActive(data.config.active); // Set configActive separately
-          setLoading(false);
-        }
-      } catch (e) {}
-    };
-
-    if (ws.readyState === WebSocket.OPEN) {
-      sendGetConfig();
-    } else if (ws.readyState === WebSocket.CONNECTING) {
-      ws.addEventListener('open', sendGetConfig, { once: true });
-    }
-
-    ws.addEventListener('message', handleMessage);
-
-    return () => {
-      ws.removeEventListener('message', handleMessage);
-      if (ws.readyState === WebSocket.CONNECTING) {
-        ws.removeEventListener('open', sendGetConfig, { once: true });
-      }
-    };
-  }, [ws, configId]);
 
   // Run form submit
   const handleRun = (e) => {
@@ -390,15 +271,11 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
   };
 
   if (!configId) {
-    return <div className="text-muted">Select a config to view details.</div>;
+    return <div className="text-muted">...</div>;
   }
 
   if (loading) {
-    return <div className="text-secondary">Loading config...</div>;
-  }
-
-  if (!config) {
-    return <div className="text-danger">No config data available.</div>;
+    return <div className="text-secondary">Загрузка конфигурации конвейера...</div>;
   }
 
   const { lines: terminalLines } = getCurrentTerminal();
@@ -406,7 +283,7 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
   return (
     <div>
       <h2 className="mb-3 d-flex justify-content-between align-items-center">
-        <span>Config Details</span>
+        <span>Конфигурация конвейера</span>
         <span className="d-flex gap-2">
           <button
             className="btn btn-outline-secondary btn-sm me-2"
@@ -447,7 +324,7 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
                 <button type="button" className="btn-close" aria-label="Close" onClick={() => setShowDeleteConfirm(false)} />
               </div>
               <div className="modal-body">
-                <p>Are you sure you want to delete this config?</p>
+                <p>Вы уверены, что хотите удалить этот конвейер?</p>
               </div>
               <div className="modal-footer">
                 <button className="btn btn-secondary" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>Cancel</button>
@@ -459,39 +336,36 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
           </div>
         </div>
       )}
-      {showConfigForm && (
-        <ConfigCreateForm
-          ws={ws}
-          mode="edit"
-          config={config}
-          autoSave
-          onAutoSave={handleAutoSave}
-          onConfigsChanged={onConfigsChanged} // Pass down
-        />
-      )}
+      <ConfigCreateForm
+        ws={ws}
+        mode="edit"
+        configId={configId}
+        autoSave
+        onConfigsChanged={onConfigsChanged}
+      />
       <hr />
       <form className="mb-3" onSubmit={handleRun}>
         <div className="row align-items-end">
           <div className="col-auto">
-            <label className="form-label mb-0">Indexer</label>
+            <label className="form-label mb-0">Задача</label>
             <select
               className="form-select"
               value={indexer}
               onChange={e => setIndexer(e.target.value)}
               style={{ minWidth: 80 }}
             >
-              <option value="true">Yes</option>
-              <option value="false">No</option>
+              <option value="true">Индексация</option>
+              <option value="false">Генерация</option>
             </select>
           </div>
           <div className="col-auto">
-            <label className="form-label mb-0">Query</label>
+            <label className="form-label mb-0">Запрос</label>
             <input
               className="form-control"
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Enter query"
+              placeholder="Введите запрос"
               required
             />
           </div>
@@ -501,16 +375,16 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
               type="submit"
               disabled={runStatus?.status === 'running'}
             >
-              Run
+              Пуск
             </button>
           </div>
           <div className="col-auto">
             <span>
-              Status:{' '}
-              {runStatus?.status === 'idle' && <span className="text-secondary">Idle</span>}
-              {runStatus?.status === 'running' && <span className="text-warning">Running</span>}
-              {runStatus?.status === 'ok' && <span className="text-success">OK</span>}
-              {runStatus?.status === 'error' && <span className="text-danger">Error</span>}
+              Статус:{' '}
+              {runStatus?.status === 'idle' && <span className="text-secondary">Простаивает</span>}
+              {runStatus?.status === 'running' && <span className="text-warning">Работает</span>}
+              {runStatus?.status === 'ok' && <span className="text-success">Ок</span>}
+              {runStatus?.status === 'error' && <span className="text-danger">Ошибка</span>}
               {runStatus?.runNumber && (
                 <span className="ms-2 badge bg-info text-dark">Run #{runStatus.runNumber}</span>
               )}
@@ -537,7 +411,7 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
         aria-label="Terminal output"
       >
         {terminalLines.length === 0 ? (
-          <span style={{ color: '#666' }}>No output yet.</span>
+          <span style={{ color: '#666' }}>Пока нет выходных данных.</span>
         ) : (
           terminalLines.map((line, idx) => (
             <div

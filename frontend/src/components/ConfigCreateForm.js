@@ -15,42 +15,64 @@ const parseContent = (content) => {
 };
 
 /**
- * Build config JSON from form state.
- * - In "create" mode: settings are taken from form state if present, otherwise from registry.
- * - In "edit" mode: settings are always taken from form state (which is initialized from config content).
+ * Recursively convert all numeric strings in an object/array to numbers.
  */
-const buildContent = (form, registry, mode) => {
+function deepConvertNumbers(obj) {
+  if (Array.isArray(obj)) {
+    return obj.map(deepConvertNumbers);
+  } else if (obj && typeof obj === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) {
+      out[k] = deepConvertNumbers(v);
+    }
+    return out;
+  } else if (typeof obj === "string" && obj.trim() !== "" && !isNaN(obj)) {
+    // Only convert if it's a string that is a valid number
+    return obj.indexOf(".") >= 0 ? parseFloat(obj) : parseInt(obj, 10);
+  } else {
+    return obj;
+  }
+}
+
+/**
+ * Build config JSON from form state.
+ */
+const buildContentFromForm = (form) => {
   const configJson = {};
   COMPONENTS.forEach((c) => {
     const path = form[c]?.path || "";
     let settings;
-    if (mode === "edit") {
-      // Always use settings from form state in edit mode
-      settings = form[c]?.settings || {};
-    } else {
-      // In create mode, use form state if present, otherwise registry
-      settings = form[c]?.settings;
-      if (settings === undefined) {
-        if (
-          registry &&
-          registry[c] &&
-          registry[c][path] &&
-          Array.isArray(registry[c][path]) &&
-          registry[c][path].length > 2
-        ) {
-          settings = registry[c][path][2] || {};
-        } else {
-          settings = {};
-        }
-      }
-    }
+    settings = form[c]?.settings || {};
     configJson[c] = {
       path,
-      settings,
+      settings: deepConvertNumbers(settings),
     };
   });
   return JSON.stringify(configJson, null, 2);
 };
+
+/**
+ * Helper to build default form content from defaults and registry.
+ */
+function buildContentFromDefaultsAndRegistry(defaults, registry) {
+  return Object.fromEntries(
+    COMPONENTS.map((c) => {
+      const path = defaults[c]?.path || "";
+      // Get default settings from registry
+      let settings = {};
+      if (
+        registry &&
+        registry[c] &&
+        registry[c][path] &&
+        Array.isArray(registry[c][path]) &&
+        registry[c][path].length > 2
+      ) {
+        settings = registry[c][path][2] || {};
+      }
+      return [c, { path, settings }];
+    })
+  );
+}
 
 // Helper to strip all leading "^." from a path string
 function stripCaretDotPrefixes(path) {
@@ -65,7 +87,7 @@ const ConfigCreateForm = ({
   onClose,
   onCreated,
   mode = "create", // "create" or "edit"
-  config,          // for edit: { id, name, content }
+  configId,        // for edit: config ID to fetch
   onUpdated,       // for edit: callback after update
   autoSave = false,
   onAutoSave,
@@ -74,6 +96,7 @@ const ConfigCreateForm = ({
   const [loading, setLoading] = useState(true);
   const [registry, setRegistry] = useState({});
   const [defaults, setDefaults] = useState({});
+  const [config, setConfig] = useState(null); // Store fetched config in edit mode
   const [form, setForm] = useState({
     name: "",
     indexer: { path: "" },
@@ -286,14 +309,10 @@ const ConfigCreateForm = ({
 
   const didSend = useRef(false);
 
-  // Only run on mount
+  // Fetch registry and defaults on mount
   useEffect(() => {
     if (!ws) return;
-    if (mode !== "create" && mode !== "edit") return;
-    console.log("[DEBUG] useEffect 1");
-    
-    // Store current config reference to use inside effect
-    const currentConfig = mode === "edit" ? config : null;
+    console.log("[DEBUG] useEffect 1: Fetching registry and defaults");
     
     setLoading(true);
     const sendCreationInfo = () => {
@@ -308,26 +327,7 @@ const ConfigCreateForm = ({
         if (data.status === "ok" && data.registry && data.default_config) {
           setRegistry(data.registry);
           setDefaults(data.default_config);
-          
-          // For edit mode: set form values from config
-          if (mode === "edit" && currentConfig) {
-            // Parse content JSON to get component paths and settings
-            const parsed = parseContent(currentConfig.content);
-            // Set skipNextAutoSaveRef to true before setting form
-            skipNextAutoSaveRef.current = true;
-            setForm((prev) => ({
-              ...prev,
-              name: currentConfig.name,
-              ...Object.fromEntries(
-                COMPONENTS.map((c) => {
-                  const path = parsed[c]?.path || "";
-                  const settings = parsed[c]?.settings || {};
-                  return [c, { path, settings }];
-                })
-              ),
-            }));
-          }
-          // Note: Create mode initialization moved to separate effect
+          // Note: Form initialization moved to separate effects
         }
         setLoading(false);
       } catch (e) {
@@ -347,72 +347,82 @@ const ConfigCreateForm = ({
       ws.removeEventListener("message", handleMessage);
     };
   }, []);
+  
+  // Fetch config by ID in edit mode
+  useEffect(() => {
+    if (mode !== "edit" || !ws || !configId) return;
+    console.log("[DEBUG] useEffect 2: Fetching config by ID in edit mode");
+    
+    setLoading(true);
+    ws.send(JSON.stringify({ command: "get_config", args: [String(configId)] }));
+    
+    const handleConfigMessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.status === "ok" && data.config && String(data.config.id) === String(configId)) {
+          setConfig(data.config);
+          setLoading(false);
+        } else if (data.status === "error") {
+          console.error("[ERROR] Failed to fetch config:", data.message);
+          setError(`Failed to load config: ${data.message || "Unknown error"}`);
+          setLoading(false);
+        }
+      } catch (e) {
+        console.error("[ERROR] Error parsing config response:", e);
+      }
+    };
+    
+    ws.addEventListener("message", handleConfigMessage);
+    return () => ws.removeEventListener("message", handleConfigMessage);
+  }, [ws, configId, mode]);
 
-  // If config prop changes in edit mode, update form
-  // useEffect(() => {
-  //   if (mode === "edit" && config) {
-  //     console.log("[DEBUG] useEffect 2");
-  //     const parsed = parseContent(config.content);
-  //     // Set skipNextAutoSaveRef to true before setting form
-  //     skipNextAutoSaveRef.current = true;
-  //     setForm((prev) => ({
-  //       ...prev,
-  //       name: config.name,
-  //       ...Object.fromEntries(
-  //         COMPONENTS.map((c) => {
-  //           const path = parsed[c]?.path || "";
-  //           const settings = parsed[c]?.settings || {};
-  //           return [c, { path, settings }];
-  //         })
-  //       ),
-  //     }));
-  //   }
-  // }, [config]);
+  // Initialize form from fetched config in edit mode
+  useEffect(() => {
+    if (mode === "edit" && config) {
+      console.log("[DEBUG] useEffect 3: Initializing form from config in edit mode");
+      const parsed = parseContent(config.content);
+      // Set skipNextAutoSaveRef to true before setting form
+      skipNextAutoSaveRef.current = true;
+      setForm((prev) => ({
+        ...prev,
+        name: config.name,
+        ...Object.fromEntries(
+          COMPONENTS.map((c) => {
+            const path = parsed[c]?.path || "";
+            const settings = parsed[c]?.settings || {};
+            return [c, { path, settings }];
+          })
+        ),
+      }));
+    }
+  }, [config, mode]);
   
   // NEW EFFECT: Initialize form state for CREATE mode after registry/defaults are loaded
   useEffect(() => {
     if (
       mode === "create" &&
       registry &&
-      Object.keys(registry).length > 0 &&
-      defaults &&
-      Object.keys(defaults).length > 0
+      defaults
     ) {
       console.log("[DEBUG] useEffect 3");
       setForm((prev) => ({
         ...prev,
-        ...Object.fromEntries(
-          COMPONENTS.map((c) => {
-            const path = defaults[c]?.path || "";
-            // Get default settings from registry
-            let settings = {};
-            if (
-              registry &&
-              registry[c] &&
-              registry[c][path] &&
-              Array.isArray(registry[c][path]) &&
-              registry[c][path].length > 2
-            ) {
-              settings = registry[c][path][2] || {};
-            }
-            return [c, { path, settings }];
-          })
-        ),
+        ...buildContentFromDefaultsAndRegistry(defaults, registry),
       }));
     }
   }, [registry, defaults]);
 
   // Open script editor when componentContent is set
   useEffect(() => {
-    if (mode === "edit" && config && componentContent) {
-      console.log("[DEBUG] useEffect 4");
+    if (mode === "edit" && componentContent) {
+      console.log("[DEBUG] useEffect 5: Opening script editor");
       const [compName, compPath] = componentContent;
       if (compName && compPath) {
         openScriptEditorPopup(compPath.slice(0, compPath.lastIndexOf(".")));
       }
       setComponentContent(null); // Reset trigger
     }
-  }, [componentContent, config]);
+  }, [componentContent, mode]);
 
   // Instant auto-save on every change in edit+autoSave mode, but not on initial load
   useEffect(() => {
@@ -420,17 +430,29 @@ const ConfigCreateForm = ({
       mode === "edit" &&
       autoSave &&
       typeof ws !== "undefined" &&
-      config &&
+      configId &&
       (form.name || form.indexer?.path || form.retriever?.path || form.augmenter?.path || form.generator?.path)
     ) {
-      console.log("[DEBUG] useEffect 5");
       if (skipNextAutoSaveRef.current) {
         // Skip this auto-save, reset the flag
         skipNextAutoSaveRef.current = false;
         return;
       }
+      console.log("[DEBUG] useEffect 6: Auto-saving config changes");
       
-      // Only notify parent via onAutoSave, don't send update_config here
+      // Send update_config command directly
+      const content = buildContentFromForm(form);
+      const message = {
+        command: "update_config",
+        args: [
+          configId,
+          form.name,
+          content,
+        ],
+      };
+      ws.send(JSON.stringify(message));
+      
+      // Notify parent components
       if (typeof onAutoSave === "function") {
         onAutoSave(form); // Always sends the latest form value
       }
@@ -486,24 +508,7 @@ const ConfigCreateForm = ({
     if (defaults) {
       setForm((prev) => ({
         ...prev,
-        // keep name as is
-        ...Object.fromEntries(
-          COMPONENTS.map((c) => {
-            const path = defaults[c]?.path || "";
-            // Get default settings from registry
-            let settings = {};
-            if (
-              registry &&
-              registry[c] &&
-              registry[c][path] &&
-              Array.isArray(registry[c][path]) &&
-              registry[c][path].length > 2
-            ) {
-              settings = registry[c][path][2] || {};
-            }
-            return [c, { path, settings }];
-          })
-        ),
+        ...buildContentFromDefaultsAndRegistry(defaults, registry),
       }));
     }
   };
@@ -544,7 +549,7 @@ const ConfigCreateForm = ({
     setSubmitting(true);
 
     // Build config JSON from component selectors
-    const content = buildContent(form, registry, mode);
+    const content = buildContentFromForm(form);
 
     if (mode === "create") {
       const message = {
@@ -571,21 +576,54 @@ const ConfigCreateForm = ({
       };
       ws.addEventListener("message", handleResponse);
       ws.send(JSON.stringify(message));
-    } else if (mode === "edit" && config) {
-      // In edit mode, just call onUpdated/onClose if provided
-      // Do NOT send update_config here - parent component is responsible for that
-      setSubmitting(false);
-      onUpdated && onUpdated();
-      onClose && onClose();
+    } else if (mode === "edit" && configId) {
+      // In edit mode, send update_config directly
+      // const content = buildContentFromForm(form);
+      const message = {
+        command: "update_config",
+        args: [
+          configId,
+          form.name,
+          content,
+        ],
+      };
+      
+      const handleResponse = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.status === "ok") {
+            ws.removeEventListener("message", handleResponse);
+            setSubmitting(false);
+            onUpdated && onUpdated();
+            onClose && onClose();
+          } else if (data.status === "error") {
+            setError(data.message || "Error updating config");
+            setSubmitting(false);
+          }
+        } catch (e) {}
+      };
+      
+      ws.addEventListener("message", handleResponse);
+      ws.send(JSON.stringify(message));
     }
   };
 
+  // Show loading state while fetching config in edit mode
+  if (mode === "edit" && loading) {
+    return <div className="text-center p-3"><div className="spinner-border text-secondary" role="status"></div></div>;
+  }
+  
+  // Show error if config couldn't be loaded in edit mode
+  if (mode === "edit" && !loading && !config) {
+    return <div className="alert alert-danger m-3">Не получилось загрузить конфигурацию конвейера. {error}</div>;
+  }
+  
   return (
     <>
       <form onSubmit={handleSubmit} className="p-3">
-        <h5>{mode === "edit" ? "(editable)" : "Create New Config"}</h5>
+        <h5>{mode === "edit" ? "Можно редактировать" : "Создание нового конвейера"}</h5>
         <div className="mb-3">
-          <label className="form-label">Name</label>
+          <label className="form-label">Название</label>
           <input
             className="form-control"
             name="name"
@@ -621,7 +659,7 @@ const ConfigCreateForm = ({
             onClick={handleToDefaults}
             disabled={submitting}
           >
-            To defaults
+            К конфигурации по умолчанию
           </button>
         )}
         {error && <div className="alert alert-danger">{error}</div>}
@@ -633,7 +671,7 @@ const ConfigCreateForm = ({
               onClick={onClose}
               disabled={submitting}
             >
-              Cancel
+              Отмена
             </button>
             <button
               type="submit"

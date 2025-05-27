@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import ItemSelector from "./ItemSelector";
 
 /**
@@ -108,12 +108,12 @@ const ComponentFileSelector = ({
               </>
             ) : (
               <div>
-                <label className="form-label">New file path</label>
+                <label className="form-label">Новый файл модуля</label>
                 <input
                   className="form-control"
                   value={newFilePath}
                   onChange={(e) => setNewFilePath(e.target.value)}
-                  placeholder="e.g. my_component.py"
+                  placeholder="Например components.custom"
                   autoFocus
                   disabled={creating}
                 />
@@ -134,7 +134,7 @@ const ComponentFileSelector = ({
                   onClick={onClose}
                   disabled={creating}
                 >
-                  Cancel
+                  Отмена
                 </button>
                 <button
                   type="button"
@@ -142,7 +142,7 @@ const ComponentFileSelector = ({
                   onClick={handleSelect}
                   disabled={!selectedFile || creating}
                 >
-                  Select
+                  Продолжить
                 </button>
               </>
             ) : (
@@ -153,7 +153,7 @@ const ComponentFileSelector = ({
                   onClick={handleCreateCancel}
                   disabled={creating}
                 >
-                  Back
+                  Назад
                 </button>
                 <button
                   type="button"
@@ -164,7 +164,7 @@ const ComponentFileSelector = ({
                   {creating ? (
                     <span>
                       <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                      Creating...
+                      Создание...
                     </span>
                   ) : (
                     "Create"

@@ -6,12 +6,12 @@ import importlib.util
 async def exec_task(fn_dict: dict, indexer: bool, **kwargs):
     """code execution"""
     if indexer:
-        result = await fn_dict["indexer"](kwargs.get("path", None))
+        result = await fn_dict["indexer"][0](kwargs.get("path", None), **fn_dict["indexer"][1])
     else:
         query = kwargs.get("query", None)
-        retreived = await fn_dict["retriever"](query)
-        augmented = await fn_dict["augmenter"](query, retreived)
-        generated = await fn_dict["generator"](query, augmented)
+        retreived = await fn_dict["retriever"][0](query, **fn_dict["retriever"][1])
+        augmented = await fn_dict["augmenter"][0](query, retreived, **fn_dict["augmenter"][1])
+        generated = await fn_dict["generator"][0](query, augmented, **fn_dict["generator"][1])
 
 def get_fn(path: str):
     """dynamic function import like from 'module.next.some_function' string"""

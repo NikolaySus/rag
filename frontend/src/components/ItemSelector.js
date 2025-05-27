@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Helper to strip all leading "^." from a path string.
@@ -117,7 +117,7 @@ const ItemSelector = ({
           onClick={disabled ? undefined : handleLinkClick}
           tabIndex={0}
         >
-          {currentLabel || <span className="text-muted">Select...</span>}
+          {currentLabel || <span className="text-muted">Выбрать...</span>}
         </a>
         {/* Divider */}
         <div
@@ -203,7 +203,7 @@ const ItemSelector = ({
             }}
             onClick={() => handleSelect("__create_new__")}
           >
-            + Create new
+            + Создать новый
           </button>
         </div>
       )}

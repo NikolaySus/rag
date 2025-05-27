@@ -128,16 +128,16 @@ async def default_generator(query: str,
                             temperature: float = 1.0,
                             model: str = 'gemma3:4b',
                             ollama_host: str = "http://localhost:11434",
-                            sys_prompt = "Ты — ассистент Alt Linux, отвечающий на запросы пользователя исходя из найденной информации.") -> bool:
+                            sys_prompt = "Ты — ассистент, отвечающий на запросы пользователя исходя из найденной информации.") -> bool:
     """My generator"""
     messages = [
         {
             "role": "system",
-            "content": (f"{sys_prompt}\n{tool_context}")
+            "content": f"{sys_prompt}"
         },
         {
             "role": "user",
-            "content": query
+            "content": f"{tool_context}\n\n{query}"
         },
     ]
     if not ollama_model(model):

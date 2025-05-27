@@ -7,14 +7,15 @@
  * @param {boolean} props.disabled
  */
 const SettingsField = ({ settings = {}, onChange, disabled }) => {
-  if (!settings || typeof settings !== "object") return null;
+  if (!settings || typeof settings !== "object" ||
+    Object.keys(settings).length === 0) return <></>;
 
   return (
     <div className="mb-3">
-      <label className="form-label">Settings</label>
+      <label className="form-label">Настройки</label>
       <div className="row">
         {Object.entries(settings).map(([key, value]) => (
-          <div className="col-12 col-md-6 mb-2" key={key}>
+          <div className="col-12 mb-2" key={key}>
             <div className="input-group">
               <span className="input-group-text" style={{ minWidth: 120 }}>{key}</span>
               <input

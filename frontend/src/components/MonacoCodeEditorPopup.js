@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
 import MonacoEditor from "@monaco-editor/react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Popup/modal code editor using Monaco.
@@ -136,14 +136,14 @@ const MonacoCodeEditorPopup = ({
             onClick={onClose}
             type="button"
           >
-            Cancel
+            Отмена
           </button>
           <button
             className="btn btn-primary"
             onClick={handleSave}
             type="button"
           >
-            Save
+            Сохранить
           </button>
         </div>
       </div>

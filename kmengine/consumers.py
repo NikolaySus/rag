@@ -75,7 +75,7 @@ class KernelCLI:
             indexer = "False"
         code = f"""
 code = {content_}
-fn_dict = {{k: get_fn(v['path']) for k, v in code.items()}}
+fn_dict = {{k: (get_fn(v['path']), v['settings']) for k, v in code.items()}}
 await exec_task(fn_dict, {indexer}, {larg})
 """
         # For new kernels, we need to do initial imports
@@ -455,7 +455,6 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         #     await self.send_json({"status": "error",
         #                           "message": "new_content must be valid JSON"})
         #     return
-        print(new_content)
         msg = await sync_to_async(self.cli.update_config)(config_id, new_name, new_content)
         await self.send_json({"status": "ok",
                               "updated_id": config_id,
