@@ -18,7 +18,7 @@ const MonacoCodeEditorPopup = ({
   onSave,
   onClose,
   language = "python",
-  title = "Edit Code",
+  title = "Редактирование кода",
 }) => {
   // Determine initial code value and save style
   const [saveAsString] = useState(() => typeof lines === "string");

@@ -289,17 +289,17 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
             className="btn btn-outline-secondary btn-sm me-2"
             onClick={handleDeactivate}
             disabled={deactivating || !configActive}
-            title={!configActive ? "Already deactivated" : "Deactivate this config"}
+            title={!configActive ? "Выключен" : "Выключить этот конвейер"}
           >
-            {deactivating ? "Deactivating..." : "Deactivate"}
+            {deactivating ? "Выключение..." : "Выключить"}
           </button>
           <button
             className="btn btn-outline-danger btn-sm"
             onClick={() => setShowDeleteConfirm(true)}
             disabled={deleting}
-            title="Delete this config"
+            title="Удалить этот конвейер"
           >
-            {deleting ? "Deleting..." : "Delete"}
+            {deleting ? "Удаление..." : "Удалить"}
           </button>
         </span>
       </h2>
@@ -320,16 +320,16 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
           <div className="modal-dialog" style={{ pointerEvents: 'auto', marginTop: '10vh' }}>
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">Confirm Delete</h5>
+                <h5 className="modal-title">Подтверждение удаления</h5>
                 <button type="button" className="btn-close" aria-label="Close" onClick={() => setShowDeleteConfirm(false)} />
               </div>
               <div className="modal-body">
                 <p>Вы уверены, что хотите удалить этот конвейер?</p>
               </div>
               <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>Cancel</button>
+                <button className="btn btn-secondary" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>Отмена</button>
                 <button className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
-                  {deleting ? "Deleting..." : "Delete"}
+                  {deleting ? "Удаление..." : "Удалить"}
                 </button>
               </div>
             </div>

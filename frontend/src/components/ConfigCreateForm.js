@@ -312,7 +312,7 @@ const ConfigCreateForm = ({
   // Fetch registry and defaults on mount
   useEffect(() => {
     if (!ws) return;
-    console.log("[DEBUG] useEffect 1: Fetching registry and defaults");
+    // console.log("[DEBUG] useEffect 1: Fetching registry and defaults");
     
     setLoading(true);
     const sendCreationInfo = () => {
@@ -351,7 +351,7 @@ const ConfigCreateForm = ({
   // Fetch config by ID in edit mode
   useEffect(() => {
     if (mode !== "edit" || !ws || !configId) return;
-    console.log("[DEBUG] useEffect 2: Fetching config by ID in edit mode");
+    // console.log("[DEBUG] useEffect 2: Fetching config by ID in edit mode");
     
     setLoading(true);
     ws.send(JSON.stringify({ command: "get_config", args: [String(configId)] }));
@@ -379,7 +379,7 @@ const ConfigCreateForm = ({
   // Initialize form from fetched config in edit mode
   useEffect(() => {
     if (mode === "edit" && config) {
-      console.log("[DEBUG] useEffect 3: Initializing form from config in edit mode");
+      // console.log("[DEBUG] useEffect 3: Initializing form from config in edit mode");
       const parsed = parseContent(config.content);
       // Set skipNextAutoSaveRef to true before setting form
       skipNextAutoSaveRef.current = true;
@@ -404,7 +404,7 @@ const ConfigCreateForm = ({
       registry &&
       defaults
     ) {
-      console.log("[DEBUG] useEffect 3");
+      // console.log("[DEBUG] useEffect 3");
       setForm((prev) => ({
         ...prev,
         ...buildContentFromDefaultsAndRegistry(defaults, registry),
@@ -415,7 +415,7 @@ const ConfigCreateForm = ({
   // Open script editor when componentContent is set
   useEffect(() => {
     if (mode === "edit" && componentContent) {
-      console.log("[DEBUG] useEffect 5: Opening script editor");
+      // console.log("[DEBUG] useEffect 5: Opening script editor");
       const [compName, compPath] = componentContent;
       if (compName && compPath) {
         openScriptEditorPopup(compPath.slice(0, compPath.lastIndexOf(".")));
@@ -438,7 +438,7 @@ const ConfigCreateForm = ({
         skipNextAutoSaveRef.current = false;
         return;
       }
-      console.log("[DEBUG] useEffect 6: Auto-saving config changes");
+      // console.log("[DEBUG] useEffect 6: Auto-saving config changes");
       
       // Send update_config command directly
       const content = buildContentFromForm(form);
@@ -662,7 +662,6 @@ const ConfigCreateForm = ({
             К конфигурации по умолчанию
           </button>
         )}
-        {error && <div className="alert alert-danger">{error}</div>}
         {!(mode === "edit" && autoSave) && (
           <div className="d-flex justify-content-end">
             <button
@@ -718,7 +717,7 @@ const ConfigCreateForm = ({
           onSelect={handleFileSelected}
           onCreate={handleFileCreated}
           onClose={handleFileSelectorClose}
-          title={`Select or create file for ${fileSelector.compName}`}
+          title={`Выбор или создание модуля для ${fileSelector.compName}`}
           error={fileSelector.error}
           creating={fileSelector.creating}
         />

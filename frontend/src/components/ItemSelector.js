@@ -1,28 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
-/**
- * Helper to strip all leading "^." from a path string.
- * Used for display purposes when item values are paths.
- */
-function stripCaretDotPrefixes(path) {
-  if (typeof path !== "string") return path;
-  return path.replace(/^(?:\^\.)+/, "");
+// Utility function (assumed to exist in your codebase)
+function stripCaretDotPrefixes(str) {
+  // Placeholder: replace with actual implementation if needed
+  return str ? str.replace(/^[\^\.]+/, "") : "";
 }
 
-/**
- * ItemSelector
- * A generic dropdown selector with a clickable link and dropdown arrow.
- * Useful for selecting items (e.g., components, files, etc.) with an option to trigger a custom action on link click.
- *
- * Props:
- * - label: string - Label for the selector.
- * - name: string - Name of the field.
- * - value: string - Current selected value.
- * - options: object - { [value]: id } map of selectable options.
- * - onChange: function - Called with event-like { target: { name, value } } on selection.
- * - disabled: boolean - If true, disables interaction.
- * - onLinkClick: function - Called with (name, value) when the link is clicked.
- */
 const ItemSelector = ({
   label,
   name,
@@ -32,6 +15,7 @@ const ItemSelector = ({
   disabled,
   onLinkClick,
   onCreate,
+  linkEnabled = true, // New prop with default true
 }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef();
@@ -52,9 +36,7 @@ const ItemSelector = ({
   }, [open]);
 
   // Always show the value if present, even if not in options, but preprocess for display
-  const currentLabel = value
-    ? stripCaretDotPrefixes(value)
-    : "";
+  const currentLabel = value ? stripCaretDotPrefixes(value) : "";
 
   const handleSelect = (selectedValue) => {
     setOpen(false);
@@ -69,7 +51,7 @@ const ItemSelector = ({
 
   const handleLinkClick = (e) => {
     e.preventDefault();
-    if (onLinkClick && !disabled) {
+    if (onLinkClick && !disabled && linkEnabled) {
       onLinkClick(name, value);
     }
     // Do NOT open dropdown
@@ -79,6 +61,9 @@ const ItemSelector = ({
     e.preventDefault();
     if (!disabled) setOpen((prev) => !prev);
   };
+
+  // Determine link style and clickability
+  const isLinkActive = !disabled && linkEnabled;
 
   return (
     <div className="mb-3" ref={ref} style={{ position: "relative" }}>
@@ -100,9 +85,9 @@ const ItemSelector = ({
           href="#"
           className="form-link"
           style={{
-            color: "#0d6efd",
-            textDecoration: "underline",
-            cursor: disabled ? "not-allowed" : "pointer",
+            color: isLinkActive ? "#0d6efd" : "#6c757d",
+            textDecoration: isLinkActive ? "underline" : "none",
+            cursor: isLinkActive ? "pointer" : "not-allowed",
             flex: 1,
             padding: "6px 12px",
             background: "transparent",
@@ -114,8 +99,9 @@ const ItemSelector = ({
             overflow: "hidden",
             textOverflow: "ellipsis",
           }}
-          onClick={disabled ? undefined : handleLinkClick}
+          onClick={isLinkActive ? handleLinkClick : (e) => e.preventDefault()}
           tabIndex={0}
+          aria-disabled={!isLinkActive}
         >
           {currentLabel || <span className="text-muted">Выбрать...</span>}
         </a>

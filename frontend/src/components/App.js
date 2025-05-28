@@ -33,7 +33,7 @@ const App = () => {
 
     ws.onopen = () => {
       setLoaded(true);
-      setPlaceholder("Подключён");
+      setPlaceholder("Подключение - Ок");
     };
 
     ws.onerror = () => {
@@ -137,7 +137,7 @@ const App = () => {
           }}>
           <div className="mb-2">
             <span className={`badge ${loaded ? 'bg-success' : 'bg-secondary'}`}>
-              {loaded ? "Подключён" : placeholder}
+              {loaded ? "Подключение - Ок" : placeholder}
             </span>
           </div>
           <ConfigDetails

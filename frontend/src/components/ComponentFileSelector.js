@@ -21,7 +21,7 @@ const ComponentFileSelector = ({
   onSelect,
   onCreate,
   onClose,
-  title = "Select or Create File",
+  title = "Выбор или создание модуля",
   error = null,
   creating = false,
 }) => {
@@ -104,6 +104,7 @@ const ComponentFileSelector = ({
                   onChange={handleFileChange}
                   onCreate={handleCreateNew}
                   disabled={creating}
+                  linkEnabled={false}
                 />
               </>
             ) : (

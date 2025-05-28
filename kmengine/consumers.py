@@ -219,6 +219,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
             "create_script": self.handle_create_script,
             "update_script": self.handle_update_script,
             "get_script": self.handle_get_script,
+            "delete_script": self.handle_delete_script,
         }
         # Set of commands that are long-running and should be dispatched in background
         self.long_running_commands = {"run"}
@@ -558,6 +559,31 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
                                       "warning": f"Could not open file '{file}'. Reason: {e}"})
         else:
             await self.send_json({"status": "error", "exists": False, "path": path})
+
+    async def handle_delete_script(self, args: List[Any]) -> None:
+        """Delete a script by path."""
+        if not args:
+            await self.send_json({"status": "error", "message": "No script path provided"})
+            return
+        path = args[0]
+
+        # Try to get and delete the script
+        script = await sync_to_async(Script.objects.filter(path=path).first)()
+        if not script:
+            await self.send_json({"status": "error", "message": f"Script with path '{path}' does not exist"})
+            return
+
+        # Optionally, also remove the file from disk if desired (not required by your request)
+        raw = path.replace(".", "/") + ".py"
+        file = Path(raw)
+        if file.exists():
+            file.unlink()
+
+        await sync_to_async(script.delete)()
+        await self.send_json({
+            "status": "ok",
+            "message": f"Script with path '{path}' deleted"
+        })
 
     @sync_to_async
     def update_calculation_status(self, calc_id, status):
