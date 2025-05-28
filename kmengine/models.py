@@ -34,6 +34,8 @@ class Calculation(models.Model):
     """Calculation model"""
     config = models.ForeignKey(Config, on_delete=models.CASCADE, related_name='calculations')
     status = models.CharField(max_length=7, choices=STATUS_CHOICES, default='running')
+    input = models.TextField(default="")
+    output = models.TextField(default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

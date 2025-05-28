@@ -1,6 +1,6 @@
 import AnsiToHtml from 'ansi-to-html';
 import { useEffect, useRef, useState } from 'react';
-import splitAnsiLineByVisibleLength from '../utils/splitAnsiLineByVisibleLength';
+import CalculationsTablePopup from './CalculationsTablePopup';
 import ConfigCreateForm from './ConfigCreateForm';
 
 const ansiConverter = new AnsiToHtml({
@@ -21,6 +21,9 @@ const ansiConverter = new AnsiToHtml({
  * }
  */
 const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, onStop, onConfigDeleted, onConfigsChanged, configs = [] }) => {  
+  // Add state for popup
+  const [showCalculations, setShowCalculations] = useState(false);
+
   const [configActive, setConfigActive] = useState(false); // Separate state for active status
   const [loading, setLoading] = useState(false);
   // Form state
@@ -108,15 +111,10 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
               if (output.startsWith('\r')) {
                 output = output.replace(/^\r/, '');
                 if (lines.length === 0) {
-                  // Split and push all chunks
-                  splitAnsiLineByVisibleLength(output).forEach(chunk => lines.push(chunk));
-                  lines.pop();
+                  lines.push(output);
                 } else {
-                  // Overwrite last line, but may need to split into multiple lines
-                  // Remove the last line, then add all chunks
                   lines.pop();
-                  splitAnsiLineByVisibleLength(output).forEach(chunk => lines.push(chunk));
-                  lines.pop();
+                  lines.push(output);
                 }
               } else {
                 // Check if the last line ends with a newline character
@@ -127,7 +125,7 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
                     // Append to the last line if it doesn't end with a newline
                     lines[lines.length - 1] += line;
                   } else {
-                    splitAnsiLineByVisibleLength(line).forEach(chunk => lines.push(chunk));
+                    lines.push(line);
                   }
                 });
               }
@@ -379,9 +377,19 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
             </button>
           </div>
           <div className="col-auto">
+            <button
+              type="button"
+              className="btn btn-outline-info"
+              onClick={() => setShowCalculations(true)}
+              style={{ minWidth: 90 }}
+            >
+              Отчёты
+            </button>
+          </div>
+          <div className="col-auto">
             <span>
-              Статус:{' '}
-              {runStatus?.status === 'idle' && <span className="text-secondary">Простаивает</span>}
+              Ядро:{' '}
+              {runStatus?.status === 'idle' && <span className="text-secondary">Не активно</span>}
               {runStatus?.status === 'running' && <span className="text-warning">Работает</span>}
               {runStatus?.status === 'ok' && <span className="text-success">Ок</span>}
               {runStatus?.status === 'error' && <span className="text-danger">Ошибка</span>}
@@ -421,6 +429,12 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
           ))
         )}
       </div>
+      <CalculationsTablePopup
+        ws={ws}
+        configId={configId}
+        open={showCalculations}
+        onClose={() => setShowCalculations(false)}
+      />
     </div>
   );
 };

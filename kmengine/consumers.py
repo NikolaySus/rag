@@ -220,6 +220,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
             "update_script": self.handle_update_script,
             "get_script": self.handle_get_script,
             "delete_script": self.handle_delete_script,
+            "list_calculations": self.handle_list_calculations,
         }
         # Set of commands that are long-running and should be dispatched in background
         self.long_running_commands = {"run"}
@@ -331,7 +332,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
                                   "message": "No config_id provided"})
 
     async def handle_run(self, args: List[Any]) -> None:
-        """KernelCLI run_pipeline wrapper with immediate pipeline registration"""
+        """KernelCLI run_pipeline wrapper with immediate pipeline registration and output storage"""
         if len(args) < 3:
             await self.send_json({"status": "error",
                                   "message": "config_id, indexer and path_or_query required"})
@@ -342,11 +343,14 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
         calculation = await sync_to_async(Calculation.objects.create)(
             status='running',
             config_id=config_id,
+            input=str(args)
         )
         loop = asyncio.get_running_loop()
 
         # Ensure pipeline and get kernel_id immediately in main thread
         kernel_id, need_init = await sync_to_async(self.cli.ensure_pipeline)(config_id)
+
+        output_accumulator = []
 
         async def send_output(text):
             await self.send_json({"status": "output",
@@ -354,6 +358,7 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
                                   "output": text})
 
         def on_output(text):
+            output_accumulator.append(text)
             asyncio.run_coroutine_threadsafe(send_output(text), loop)
 
         # Now run the code in the already-registered kernel
@@ -365,7 +370,15 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
             on_output,
             need_init
         )
-        await self.update_calculation_status(calculation.id, status)
+
+        # Store the accumulated output in the Calculation.output field
+        full_output = "".join(output_accumulator)
+        await sync_to_async(Calculation.objects.filter(id=calculation.id).update)(
+            output=full_output,
+            status=status
+        )
+
+        # await self.update_calculation_status(calculation.id, status)
         await self.send_json({"status": "ok",
                               "from": [config_id, calculation.id],
                               "message": "Execution finished"})
@@ -585,7 +598,36 @@ class KMEConsumer(AsyncJsonWebsocketConsumer):
             "message": f"Script with path '{path}' deleted"
         })
 
-    @sync_to_async
-    def update_calculation_status(self, calc_id, status):
-        """update calculation status"""
-        Calculation.objects.filter(id=calc_id).update(status=status)
+    async def handle_list_calculations(self, args):
+        """
+        List all calculations related to a given config ID.
+        Args: [config_id]
+        """
+        if not args:
+            await self.send_json({"status": "error", "message": "No config_id provided"})
+            return
+        try:
+            config_id = int(args[0])
+        except Exception:
+            await self.send_json({"status": "error", "message": "Invalid config_id"})
+            return
+
+        # Query calculations related to the config
+        calculations = await sync_to_async(list)(
+            Calculation.objects.filter(config_id=config_id)
+            .order_by("-created_at")
+            .values("id", "status", "input", "output", "created_at", "updated_at")
+        )
+        for record in calculations:
+            record["created_at"] = f"{record["created_at"]: %H:%M:%S %d/%m/%Y}"
+            record["updated_at"] = f"{record["updated_at"]: %H:%M:%S %d/%m/%Y}"
+        await self.send_json({
+            "status": "ok",
+            "config_id": config_id,
+            "calculations": calculations,
+        })
+
+    # @sync_to_async
+    # def update_calculation_status(self, calc_id, status):
+    #     """update calculation status"""
+    #     Calculation.objects.filter(id=calc_id).update(status=status)

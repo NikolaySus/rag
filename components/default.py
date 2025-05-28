@@ -130,6 +130,7 @@ async def default_generator(query: str,
                             ollama_host: str = "http://localhost:11434",
                             sys_prompt = "Ты — ассистент, отвечающий на запросы пользователя исходя из найденной информации.") -> bool:
     """My generator"""
+    # a = 1 / 0
     messages = [
         {
             "role": "system",
