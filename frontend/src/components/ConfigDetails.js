@@ -2,6 +2,7 @@ import AnsiToHtml from 'ansi-to-html';
 import { useEffect, useRef, useState } from 'react';
 import CalculationsTablePopup from './CalculationsTablePopup';
 import ConfigCreateForm from './ConfigCreateForm';
+import { updateTerminalLines } from "./updateTerminalLines";
 
 const ansiConverter = new AnsiToHtml({
   fg: '#e0e0e0',
@@ -107,30 +108,7 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
             ) {
               let lines = [...prev.lines];
               let output = data.output || '';
-              // Emulate carriage return: overwrite the last line
-              if (output.startsWith('\r')) {
-                output = output.replace(/^\r/, '');
-                if (lines.length === 0) {
-                  lines.push(output);
-                } else {
-                  lines.pop();
-                  lines.push(output);
-                }
-              } else {
-                // Check if the last line ends with a newline character
-                const lastLineEndsWithNewline = lines.length > 0 && lines[lines.length - 1].endsWith('\n');
-                const splitLines = output.split('\n');
-                splitLines.forEach((line, idx) => {
-                  if (idx === 0 && lines.length > 0 && !lastLineEndsWithNewline) {
-                    // Append to the last line if it doesn't end with a newline
-                    lines[lines.length - 1] += line;
-                  } else {
-                    lines.push(line);
-                  }
-                });
-              }
-              // Limit terminal buffer size (optional)
-              if (lines.length > 500) lines = lines.slice(lines.length - 500);
+              lines = updateTerminalLines(lines, output);
               return {
                 ...prevState,
                 [key]: {
@@ -142,31 +120,6 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
             return prevState;
           });
         }
-        // Optionally handle completion
-        // if (
-        //   data.status === 'ok' &&
-        //   Array.isArray(data.from) &&
-        //   data.from.length === 2
-        // ) {
-        //   const [msgConfigId, msgRunNumber] = data.from;
-        //   const key = String(msgConfigId);
-        //   setTerminalState(prevState => {
-        //     const prev = prevState[key] || { lines: [], currentRun: null };
-        //     if (
-        //       prev.currentRun &&
-        //       String(msgRunNumber) === String(prev.currentRun.runNumber)
-        //     ) {
-        //       return {
-        //         ...prevState,
-        //         [key]: {
-        //           ...prev,
-        //           lines: [...prev.lines, '[Execution finished]'],
-        //         }
-        //       };
-        //     }
-        //     return prevState;
-        //   });
-        // }
       } catch (e) {}
     };
 
@@ -356,15 +309,20 @@ const ConfigDetails = ({ ws, configId, setSelectedConfigId, runStatus, onRun, on
               <option value="false">Генерация</option>
             </select>
           </div>
-          <div className="col-auto">
+          <div className="col-auto" style={{ minWidth: 300, flex: 1 }}>
             <label className="form-label mb-0">Запрос</label>
-            <input
+            <textarea
               className="form-control"
-              type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
               placeholder="Введите запрос"
               required
+              rows={1}
+              style={{
+                resize: "vertical",
+                maxHeight: "180px",
+                width: "100%",
+              }}
             />
           </div>
           <div className="col-auto">

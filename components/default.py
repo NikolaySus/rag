@@ -14,21 +14,6 @@ from utils.readers import html_to_md
 from utils.ollama_utils import ollama_model, ollama_chat_completion, ollama_embed
 from utils.splitters import split_by_const
 
-# def qdrant_collection(client, name: str, dim: int, create: bool):
-#     """Check if collection exists and create, if needed"""
-#     if client.collection_exists(collection_name=name) is False:
-#         client.create_collection(
-#             collection_name=name,
-#             vectors_config=VectorParams(
-#                 size=dim,
-#                 distance=Distance.COSINE,
-#                 on_disk=True,
-#                 hnsw_config=HnswConfigDiff(ef_construct=100, m=16, on_disk=True)),
-#             on_disk_payload=True
-#         )
-#         return create
-#     return True
-
 
 @register("indexer")
 async def default_indexer(paths: str,
@@ -41,6 +26,7 @@ async def default_indexer(paths: str,
                           chunk_overlap: int = 1024,
                           ollama_timeout: int = 60) -> bool:
     """My indexer"""
+    # print("Hello from indexer!")  # Новая, очень важная строка кода
     if not ollama_model(ollama_embedding_model):
         return False
     paths = paths.split()
@@ -48,8 +34,6 @@ async def default_indexer(paths: str,
     result = True
     try:
         http_client = httpx.AsyncClient(headers={'User-Agent': 'Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.166 Safari/537.36'})
-        # if not qdrant_collection(client, name, ollama_embedding_model_dim, True):
-        #     return False
         if client.collection_exists(collection_name=name) is False:
             client.create_collection(
                 collection_name=name,
@@ -85,7 +69,6 @@ async def default_retriever(query: str,
                             name: str = "test_collection",
                             ollama_host: str = "http://localhost:11434",
                             ollama_embedding_model: str = "bge-m3:567m",
-                            # ollama_embedding_model_dim: int = 1024,
                             ollama_timeout: int = 60) -> List[Document]:
     """My retriever"""
     k = 1
@@ -94,7 +77,6 @@ async def default_retriever(query: str,
         return []
     client = QdrantLocal(save)
     try:
-        # if not qdrant_collection(client, name, ollama_embedding_model_dim, True):
         if client.collection_exists(collection_name=name) is False:
             print(f"No '{name}' collection")
             return []
@@ -131,6 +113,7 @@ async def default_generator(query: str,
                             sys_prompt = "Ты — ассистент, отвечающий на запросы пользователя исходя из найденной информации.") -> bool:
     """My generator"""
     # a = 1 / 0
+    # print(tool_context)
     messages = [
         {
             "role": "system",

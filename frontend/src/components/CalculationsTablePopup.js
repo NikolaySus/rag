@@ -1,5 +1,6 @@
 import AnsiToHtml from "ansi-to-html";
 import { useEffect, useState } from "react";
+import { updateTerminalLines } from "./updateTerminalLines";
 
 const statusColor = {
   ok: "success",
@@ -9,7 +10,6 @@ const statusColor = {
   idle: "secondary",
 };
 
-// Initialize ansiConverter as in ConfigDetails.js
 const ansiConverter = new AnsiToHtml({
   fg: '#e0e0e0',
   bg: '#181818',
@@ -84,7 +84,7 @@ export default function CalculationsTablePopup({ ws, configId, open, onClose }) 
       aria-modal="true"
       role="dialog"
     >
-      <div className="modal-dialog modal-lg" style={{ pointerEvents: "auto", marginTop: "8vh" }}>
+      <div className="modal-dialog modal-lg" style={{ pointerEvents: "auto", marginTop: "8vh", width: "80vw", maxWidth: "none" }}>
         <div className="modal-content">
           <div className="modal-header">
             <h5 className="modal-title">Отчёты по конвейеру</h5>
@@ -110,39 +110,50 @@ export default function CalculationsTablePopup({ ws, configId, open, onClose }) 
                     </tr>
                   </thead>
                   <tbody>
-                    {calculations.map((calc) => (
-                      <tr key={calc.id}>
-                        <td>{calc.id}</td>
-                        <td>
-                          <span className={`badge bg-${statusColor[calc.status] || "secondary"}`}>
-                            {calc.status}
-                          </span>
-                        </td>
-                        <td>
-                          <pre className="mb-0" style={{ fontSize: "0.9em", whiteSpace: "pre-wrap" }}>
-                            {calc.input}
-                          </pre>
-                        </td>
-                        <td>
-                          <pre
-                            className="mb-0"
-                            style={{
-                              fontSize: "0.9em",
-                              whiteSpace: "pre-wrap",
-                              background: "#181818",
-                              color: "#e0e0e0",
-                              borderRadius: 4,
-                              padding: "6px",
-                              border: "1px solid #333",
-                            }}
-                            // Render ANSI output as HTML
-                            dangerouslySetInnerHTML={{ __html: ansiConverter.toHtml(calc.output || "") }}
-                          />
-                        </td>
-                        <td>{calc.created_at}</td>
-                        <td>{calc.updated_at}</td>
-                      </tr>
-                    ))}
+                    {calculations.map((calc) => {
+                      // Preprocess output using updateTerminalLines per line
+                      const outputTmp = (calc.output || "").replaceAll("\n", "​\n").replaceAll("\r", "\n\r");
+                      const linesArr = outputTmp.split("\n");
+                      let processedLines = [];
+                      for (const line of linesArr) {
+                        processedLines = updateTerminalLines(processedLines, line.replaceAll("​", "\n"));
+                      }
+                      const processedOutput = processedLines.join("\n");
+                      return (
+                        <tr key={calc.id}>
+                          <td>{calc.id}</td>
+                          <td>
+                            <span className={`badge bg-${statusColor[calc.status] || "secondary"}`}>
+                              {calc.status}
+                            </span>
+                          </td>
+                          <td>
+                            <pre className="mb-0" style={{ fontSize: "0.9em", whiteSpace: "pre-wrap" }}>
+                              {calc.input}
+                            </pre>
+                          </td>
+                          <td>
+                            <pre
+                              className="mb-0"
+                              style={{
+                                fontSize: "0.9em",
+                                whiteSpace: "pre-wrap",
+                                background: "#181818",
+                                color: "#e0e0e0",
+                                borderRadius: 4,
+                                padding: "6px",
+                                border: "1px solid #333",
+                              }}
+                              dangerouslySetInnerHTML={{
+                                __html: ansiConverter.toHtml(processedOutput),
+                              }}
+                            />
+                          </td>
+                          <td>{calc.created_at}</td>
+                          <td>{calc.updated_at}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

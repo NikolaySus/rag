@@ -3,6 +3,8 @@
 import json
 import asyncio
 import websockets
+import argparse
+from subprocess import Popen, CREATE_NEW_PROCESS_GROUP, DETACHED_PROCESS, CREATE_NO_WINDOW, PIPE
 from prompt_toolkit import PromptSession, ANSI
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.application import run_in_terminal
@@ -71,18 +73,28 @@ async def receive_loop(websocket):
             print_in_terminal("🔌 Connection closed.\n")
             break
 
-async def main():
+async def main(s_value):
     """Main async entry point"""
-    print_in_terminal("🔧 Welcome to IPython Kernel Manager CLI!\nConnecting...")
-    uri = "ws://127.0.0.1:8000/ws/kmengine/"
-    try:
-        async with websockets.connect(uri, origin="http://127.0.0.1:8000") as websocket:
-            print_in_terminal("✅ Connected to server.")
-            send_task = asyncio.create_task(send_loop(websocket))
-            receive_task = asyncio.create_task(receive_loop(websocket))
-            await asyncio.wait([send_task, receive_task], return_when=asyncio.FIRST_COMPLETED)
-    except Exception as e:
-        print_in_terminal(f"[!] Could not connect: {e}\n")
+    if s_value == "cs":
+        print_in_terminal("🔧 Welcome to IPython Kernel Manager CLI!\nConnecting...")
+        uri = "ws://127.0.0.1:8000/ws/kmengine/"
+        try:
+            async with websockets.connect(uri, origin="http://127.0.0.1:8000") as websocket:
+                print_in_terminal("✅ Connected to server.")
+                send_task = asyncio.create_task(send_loop(websocket))
+                receive_task = asyncio.create_task(receive_loop(websocket))
+                await asyncio.wait([send_task, receive_task], return_when=asyncio.FIRST_COMPLETED)
+        except Exception as e:
+            print_in_terminal(f"[!] Could not connect: {e}\n")
+    elif s_value == "ss":
+        print("PID =", Popen(["uv", "run", "manage.py", "runserver", "--noreload"], stdin=PIPE, stdout=PIPE, stderr=PIPE, creationflags=DETACHED_PROCESS | CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP, close_fds=True).pid)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="Kernel Manager CLI")
+    parser.add_argument(
+        "s",
+        choices=["cs", "ss"],
+        help="Required mode: 'cs' or 'ss'"
+    )
+    args = parser.parse_args()
+    asyncio.run(main(args.s))
