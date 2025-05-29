@@ -1,0 +1,14 @@
+.app-json-pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f6f8fa;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  margin: 0;
+}
+
+.config-list-item-selected {
+  border: 2px solid #0d6efd !important; /* Bootstrap primary color */
+  /*background-color: #fff !important;*/
+}

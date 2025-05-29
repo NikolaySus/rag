@@ -1,0 +1,18 @@
+{
+    "indexer": {
+        "path": "simpletools.simple_indexer",
+        "settings": {}
+    },
+    "retriever": {
+        "path": "simpletools.simple_retriever",
+        "settings": {}
+    },
+    "augmenter": {
+        "path": "simpletools.simple_augmenter",
+        "settings": {}
+    },
+    "generator": {
+        "path": "simpletools.simple_generator",
+        "settings": {}
+    }
+}
