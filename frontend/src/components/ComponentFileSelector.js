@@ -168,7 +168,7 @@ const ComponentFileSelector = ({
                       Создание...
                     </span>
                   ) : (
-                    "Create"
+                    "Создать"
                   )}
                 </button>
               </>

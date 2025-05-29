@@ -29,6 +29,7 @@ async def default_indexer(paths: str,
                           chunk_overlap: int = 1024,
                           ollama_timeout: int = 60) -> bool:
     """My indexer"""
+    # print("Hello from indexer!")  # Новая, очень важная строка кода
     if not ollama_model(ollama_embedding_model):
         return False
     paths = paths.split()
@@ -36,8 +37,6 @@ async def default_indexer(paths: str,
     result = True
     try:
         http_client = httpx.AsyncClient(headers={'User-Agent': 'Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.166 Safari/537.36'})
-        # if not qdrant_collection(client, name, ollama_embedding_model_dim, True):
-        #     return False
         if client.collection_exists(collection_name=name) is False:
             client.create_collection(
                 collection_name=name,
