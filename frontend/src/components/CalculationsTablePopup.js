@@ -1,5 +1,6 @@
 import AnsiToHtml from "ansi-to-html";
 import { useEffect, useState } from "react";
+import Markdown from 'react-markdown';
 import { updateTerminalLines } from "./updateTerminalLines";
 
 const statusColor = {
@@ -22,6 +23,8 @@ export default function CalculationsTablePopup({ ws, configId, open, onClose }) 
   const [loading, setLoading] = useState(false);
   const [calculations, setCalculations] = useState([]);
   const [error, setError] = useState(null);
+  const [hoveredRowId, setHoveredRowId] = useState(null);
+  const [selectedMarkdown, setSelectedMarkdown] = useState(null);
 
   useEffect(() => {
     if (!open) return;
@@ -68,27 +71,27 @@ export default function CalculationsTablePopup({ ws, configId, open, onClose }) 
   if (!open) return null;
 
   return (
-    <div
-      className="modal fade show"
-      style={{
-        display: "block",
-        background: "rgba(0,0,0,0.3)",
-        position: "fixed",
-        zIndex: 1050,
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-      }}
-      tabIndex={-1}
-      aria-modal="true"
-      role="dialog"
-    >
+      <div
+        className="modal fade show"
+        style={{
+          display: "block",
+          background: "rgba(0,0,0,0.3)",
+          position: "fixed",
+          zIndex: 1050,
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+        }}
+        tabIndex={-1}
+        aria-modal="true"
+        role="dialog"
+      >
       <div className="modal-dialog modal-lg" style={{ pointerEvents: "auto", marginTop: "8vh", width: "80vw", maxWidth: "none" }}>
         <div className="modal-content">
           <div className="modal-header">
             <h5 className="modal-title">Отчёты по конвейеру</h5>
-            <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+            <button type="button" className="btn-close" aria-label="Close" onClick={() => { setSelectedMarkdown(null); onClose(); }} />
           </div>
           <div className="modal-body">
             {loading && <div>Загрузка...</div>}
@@ -96,7 +99,7 @@ export default function CalculationsTablePopup({ ws, configId, open, onClose }) 
             {!loading && !error && calculations.length === 0 && (
               <div className="text-muted">Нет отчётов для этого конвейера.</div>
             )}
-            {!loading && !error && calculations.length > 0 && (
+            {!loading && !error && calculations.length > 0 && !selectedMarkdown && (
               <div style={{ overflowX: "auto" }}>
                 <table className="table table-sm table-bordered align-middle">
                   <thead>
@@ -120,19 +123,25 @@ export default function CalculationsTablePopup({ ws, configId, open, onClose }) 
                       }
                       const processedOutput = processedLines.join("\n");
                       return (
-                        <tr key={calc.id}>
-                          <td>{calc.id}</td>
-                          <td>
+                        <tr
+                          key={calc.id}
+                          onMouseEnter={() => setHoveredRowId(calc.id)}
+                          onMouseLeave={() => setHoveredRowId(null)}
+                          onClick={() => setSelectedMarkdown(processedOutput)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <td style={hoveredRowId === calc.id ? { backgroundColor: '#e6f0fa' } : {}}>{calc.id}</td>
+                          <td style={hoveredRowId === calc.id ? { backgroundColor: '#e6f0fa' } : {}}>
                             <span className={`badge bg-${statusColor[calc.status] || "secondary"}`}>
                               {calc.status}
                             </span>
                           </td>
-                          <td>
+                          <td style={hoveredRowId === calc.id ? { backgroundColor: '#e6f0fa' } : {}}>
                             <pre className="mb-0" style={{ fontSize: "0.9em", whiteSpace: "pre-wrap" }}>
                               {calc.input}
                             </pre>
                           </td>
-                          <td>
+                          <td style={hoveredRowId === calc.id ? { backgroundColor: '#e6f0fa' } : {}}>
                             <pre
                               className="mb-0"
                               style={{
@@ -149,8 +158,8 @@ export default function CalculationsTablePopup({ ws, configId, open, onClose }) 
                               }}
                             />
                           </td>
-                          <td>{calc.created_at}</td>
-                          <td>{calc.updated_at}</td>
+                          <td style={hoveredRowId === calc.id ? { backgroundColor: '#e6f0fa' } : {}}>{calc.created_at}</td>
+                          <td style={hoveredRowId === calc.id ? { backgroundColor: '#e6f0fa' } : {}}>{calc.updated_at}</td>
                         </tr>
                       );
                     })}
@@ -158,9 +167,19 @@ export default function CalculationsTablePopup({ ws, configId, open, onClose }) 
                 </table>
               </div>
             )}
+            {selectedMarkdown && (
+              <div>
+                <button className="btn btn-secondary mb-3" onClick={() => setSelectedMarkdown(null)}>
+                  Назад к таблице
+                </button>
+                <div style={{ maxHeight: '60vh', overflowY: 'auto', background: '#fff', padding: 16, borderRadius: 8, border: '1px solid #ccc' }}>
+                  <Markdown>{selectedMarkdown}</Markdown>
+                </div>
+              </div>
+            )}
           </div>
           <div className="modal-footer">
-            <button className="btn btn-secondary" onClick={onClose}>
+            <button className="btn btn-secondary" onClick={() => { setSelectedMarkdown(null); onClose(); }}>
               Закрыть
             </button>
           </div>
